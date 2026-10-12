@@ -2,7 +2,7 @@ import { profileFor, profileRevision, loadProfile, proofPixels, restoreProfiles,
 import { PRINTERS, printerById, assessPrinterMedia } from './printers.js';
 import { pdfSheetGeometry } from './pdf-geometry.js';
 import { ASSET_KEYS, assetLabel, normalizeEndSpreadColor } from './layout.js';
-import { assets, drawPhoto } from './media.js';
+import { backCoverUsesImage, assets, drawPhoto } from './media.js';
 import { drawBackCover, backCoverStatus } from './back-cover.js';
 
 const PREVIEW_EDGE = 512;
@@ -135,7 +135,7 @@ export function createPrintColorPanel(getState, onChange) {
   ASSET_KEYS.forEach(key => { const option = document.createElement('option'); option.value = key; option.textContent = assetLabel(key); byId('print-color-artwork').append(option); });
   const surfaces = [byId('print-color-source'), byId('print-color-estimate'), byId('print-color-alternate')];
   function render() {
-    const state = getState(), settings = normalizePrintColor(state.printColor), key = sourceKey(state, settings), record = assets.get(key),generated=key==='back-cover'&&!record,solid=['opening','closing'].includes(key);
+    const state = getState(), settings = normalizePrintColor(state.printColor), key = sourceKey(state, settings), record = key==='back-cover'&&!backCoverUsesImage(state)?null:assets.get(key),generated=key==='back-cover'&&!backCoverUsesImage(state),solid=['opening','closing'].includes(key);
     const alternate = settings.paper === 'coated' ? 'uncoated' : 'coated';
     surfaces[0].setAttribute('aria-label',solid?'Unlit solid end-spread color':generated?'Unlit generated back-cover artwork, including miniatures and metadata':'Unlit original photo in its saved trim crop');
     for (const [id, field] of [['print-color-mode', 'mode'], ['print-color-target', 'target'], ['print-color-paper', 'paper'], ['print-color-artwork', 'artwork']]) byId(id).value = settings[field];

@@ -1,6 +1,7 @@
 import { siteMetadata } from './seo.mjs';
 
 export const metadata = siteMetadata();
+export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 /** Provide the application document and the preserved studio stylesheet. */
 export default function RootLayout({ children }) {

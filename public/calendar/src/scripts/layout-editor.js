@@ -98,6 +98,19 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
   for(const [key,label,type] of GRID_FIELDS.slice(1)) createControl(gridFields,label,[key],type);
   for(const [key,label] of SPACING_FIELDS) createControl(byId('layout-spacing-controls'),label,[key]);
   createControl(byId('layout-spacing-controls'),'Date block vertical alignment',['dateVertical'],'select',[['top','Top'],['middle','Middle'],['bottom','Bottom']]);
+  // Give generated and static fields the same label/control structure.
+  for(const label of byId('layout-controls').querySelectorAll('label')) {
+    const textNodes=[...label.childNodes].filter(node=>node.nodeType===3&&node.textContent.trim());
+    if(!textNodes.length)continue;
+    const caption=document.createElement('span');caption.className='layout-control-label';
+    caption.textContent=textNodes.map(node=>node.textContent.trim()).join(' ');
+    textNodes.forEach(node=>node.remove());label.prepend(caption);
+    if(label.dataset.field==='family')caption.textContent='Font';
+    if(label.dataset.field==='size')caption.textContent='Size · pt';
+    if(label.dataset.field==='style')caption.textContent='Style';
+    if(label.dataset.field==='align')caption.textContent='Align';
+    if(label.dataset.field==='color')caption.textContent='Color';
+  }
   const endSpreadColor=byId('end-spread-color');
   endSpreadColor.addEventListener('input',()=>onEndSpreadColorChange(normalizeEndSpreadColor(endSpreadColor.value)));
   byId('reset-layout').addEventListener('click',()=>{fieldNotice='Layout and end-spread color reset. Photos, crops, holidays and document settings were kept.';onLayoutChange(normalizeLayout(),DEFAULT_END_SPREAD_COLOR);});

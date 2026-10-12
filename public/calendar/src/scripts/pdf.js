@@ -1,6 +1,6 @@
 import { pdfSheetGeometry } from './pdf-geometry.js';
 import { ASSET_KEYS, assetLabel, printPages, calendarLayout, SADDLE_IMPOSITION, saddlePage, readerState, validateSaddleImposition, normalizeEndSpreadColor } from './layout.js';
-import { assets, effectiveDpi, photoHasGaps, picaAvailable, printRasterSpec, printPhotoCanvas, TARGET_PPI, drawPhoto } from './media.js';
+import { backCoverUsesImage, assets, effectiveDpi, photoHasGaps, picaAvailable, printRasterSpec, printPhotoCanvas, TARGET_PPI, drawPhoto } from './media.js';
 
 import { printGeneratedBackCover, drawBackCover } from './back-cover.js';
 
@@ -13,17 +13,17 @@ const URL_LIFETIME = 60000;
 const breathe = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
 
 /** Back art is optional only when absent; unavailable saved uploads must still fail preflight. */
-export function requiredPhotoKeys() { return ASSET_KEYS.filter(key=>key!=='back-cover'||Boolean(assets.get('back-cover'))); }
+export function requiredPhotoKeys(state) { return ASSET_KEYS.filter(key=>key!=='back-cover'||backCoverUsesImage(state)); }
 
 /** Preflight the complete set; missing or permission-unavailable art is never silently omitted. */
 export function preflight(state) {
-  const required=requiredPhotoKeys(),missing = required.filter(key => !assets.get(key)?.bitmap);
+  const required=requiredPhotoKeys(state),missing = required.filter(key => !assets.get(key)?.bitmap);
   const monthlyState=readerState(state);
-  const low = ASSET_KEYS.filter(key => assets.get(key)?.bitmap && effectiveDpi(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state)<TARGET_PPI)
+  const low = required.filter(key => assets.get(key)?.bitmap && effectiveDpi(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state)<TARGET_PPI)
     .map(key => `${assetLabel(key)} (${Math.floor(effectiveDpi(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state))} DPI)`);
   const raster=printRasterSpec(state),resizingAvailable=picaAvailable();
-  const gaps = ASSET_KEYS.filter(key => assets.get(key)?.bitmap && photoHasGaps(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state));
-  return {missing,low,gaps,required:required.length,backCoverMode:assets.get('back-cover')?'uploaded':'generated',pending:assets.pending,rasterPpi:Math.floor(Math.min(TARGET_PPI,raster.ppi)),raster,resizingAvailable,ready:missing.length===0 && assets.pending===0 && resizingAvailable};
+  const gaps = required.filter(key => assets.get(key)?.bitmap && photoHasGaps(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state));
+  return {missing,low,gaps,required:required.length,backCoverMode:backCoverUsesImage(state)?'uploaded':'generated',pending:assets.pending,rasterPpi:Math.floor(Math.min(TARGET_PPI,raster.ppi)),raster,resizingAvailable,ready:missing.length===0 && assets.pending===0 && resizingAvailable};
 }
 
 function pageFormat(width,height) { return {orientation:width>height?'landscape':'portrait',unit:'in',format:[width,height],compress:true,precision:6}; }
@@ -73,7 +73,7 @@ async function photoArtwork(key,state,files,warnings,onProgress) {
     const canvas=document.createElement('canvas');
     const scale=900/Math.max(state.width,state.height);
     canvas.width=Math.round((state.width+2*state.bleed)*scale);canvas.height=Math.round((state.height+2*state.bleed)*scale);
-    const context=canvas.getContext('2d'),record=assets.get(key);
+    const context=canvas.getContext('2d'),record=key==='back-cover'&&!backCoverUsesImage(state)?null:assets.get(key);
     if(key==='back-cover'&&!record) drawBackCover(context,state,canvas.width,canvas.height,false,true);
     else if(record?.bitmap) drawPhoto(context,record.bitmap,record.metadata.crop,state,canvas.width,canvas.height,false,record.metadata);
     else {
@@ -84,7 +84,7 @@ async function photoArtwork(key,state,files,warnings,onProgress) {
     try {const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.85));return new Uint8Array(await blob.arrayBuffer());}
     finally {canvas.width=canvas.height=1;}
   }
-  if(key==='back-cover'&&!assets.get(key)) {
+  if(key==='back-cover'&&!backCoverUsesImage(state)) {
     let generated;
     try {
       generated=await printGeneratedBackCover(state,files,onProgress);
@@ -95,7 +95,7 @@ async function photoArtwork(key,state,files,warnings,onProgress) {
       return new Uint8Array(await blob.arrayBuffer());
     } finally {if(generated)generated.canvas.width=generated.canvas.height=1;}
   }
-  const spec=printRasterSpec(state),record=assets.get(key);
+  const spec=printRasterSpec(state),record=key==='back-cover'&&!backCoverUsesImage(state)?null:assets.get(key);
   let bitmap,canvas;
   try {
     onProgress(`${assetLabel(key)} · rereading original and bounded decoding…`);
@@ -200,7 +200,7 @@ export async function downloadCalendarPdf(state,files,onProgress,{preview=false}
   const boxes=Boolean(supportsBoxes(doc)),geometry=pdfSheetGeometry(state,boxes),marks=state.cropMarks||!boxes,slug=geometry.slug;
   if(slug) doc=new Constructor(pageFormat(pdfWidth+2*slug,pdfHeight+2*slug));
   const grants=preview?[]:await files.getGrants();
-  const denied=(preview?[]:requiredPhotoKeys()).filter(key=>!grants.some(grant=>grant.available&&grant.grantId===assets.get(key).metadata.grantId));
+  const denied=(preview?[]:requiredPhotoKeys(state)).filter(key=>!grants.some(grant=>grant.available&&grant.grantId===assets.get(key).metadata.grantId));
   if(denied.length) throw new Error(`Folder permissions unavailable: ${denied.map(assetLabel).join(', ')}. Reselect and reassign these images.`);
   if(state.bindingStyle==='saddle') return await downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes);
   const pages=printPages(),warnings=[];

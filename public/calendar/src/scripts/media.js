@@ -361,3 +361,5 @@ export function createAssetStore() {
 }
 
 export const assets = createAssetStore();
+
+export function backCoverUsesImage(state) { return state?.backCover?.mode==='image'||(state?.backCover?.mode!=='dynamic'&&Boolean(assets.get('back-cover'))); }

@@ -1,10 +1,12 @@
+import { createMobileWorkspace } from './mobile-workspace.js';
+let mobileWorkspace;
 import { readPreference, writePreference } from './browser-storage.js';
 import { pdfSheetGeometry } from './pdf-geometry.js';
 import { loadCalendarFonts } from './fonts.js';
 import { createCalendarScene, PREVIEW_DEFAULTS, PAPER_WEIGHTS, PAPER_FINISHES, estimatedCaliperMm } from './scene.js';
 import { MONTHS, assetLabel, printPages, SADDLE_IMPOSITION, saddlePage, SADDLE_PAGE_COUNT, SADDLE_SHEET_COUNT, validateSaddleImposition, normalizeLayout, normalizeArtworkMetadata, ARTWORK_FONT_ROLES, ARTWORK_METADATA_LIMITS, DEFAULT_END_SPREAD_COLOR, END_SPREADS, CALENDAR_SELECTIONS, normalizeEndSpreadColor, calendarSelection, calendarSelectionIndex, calendarSelectionLabel } from './layout.js';
 import { createLayoutEditor } from './layout-editor.js';
-import { assets, printRasterSpec } from './media.js';
+import { backCoverUsesImage, assets, printRasterSpec } from './media.js';
 import { createPhotoEditor } from './photo-editor.js';
 import { createBackCoverEditor, normalizeBackCover, backCoverStatus } from './back-cover.js';
 import { preflight, downloadCalendarPdf } from './pdf.js';
@@ -63,7 +65,7 @@ function previewSummary() {
 }
 function snapshot() {
   const check=preflight(state),saddle=state.bindingStyle==='saddle';
-  return {...state,artworkMetadata:normalizeArtworkMetadata(state.artworkMetadata),artworkText:{displayed:!assets.get('back-cover'),printed:!assets.get('back-cover'),location:'generated-back-cover-only',typographyRoles:[...ARTWORK_FONT_ROLES],metadataLimits:{...ARTWORK_METADATA_LIMITS}},backCover:normalizeBackCover(state.backCover),backCoverStatus:backCoverStatus(state),endSpreadColor:normalizeEndSpreadColor(state.endSpreadColor),selection:calendarSelection(state),layout:normalizeLayout(state.layout),layoutPreview:layoutEditor.summary(),printColor:{...printColorSummary(state),analysis:printColorPanel.summary()},preview:previewSummary(),interiorSheets:saddle?7:13,coverSheets:saddle?1:2,physicalSheets:saddle?SADDLE_SHEET_COUNT:15,readerPage:{width:state.width,height:state.height},openSpread:{width:state.width,height:state.height*2},logicalPages:saddle?SADDLE_PAGE_COUNT:30,printSequence:sequence(),assets:assets.metadata(),preflight:{missing:check.missing,requiredPhotos:check.required,backCoverMode:check.backCoverMode,lowResolution:check.low,whiteGaps:check.gaps,pending:check.pending,ready:check.ready},pdf:{pages:saddle?16:30,trimWidth:state.width,trimHeight:saddle?state.height*2:state.height,bleedWidth:state.width+2*state.bleed,bleedHeight:(saddle?state.height*2:state.height)+2*state.bleed,colorSpace:'RGB',printerReviewRequired:true}};
+  return {...state,artworkMetadata:normalizeArtworkMetadata(state.artworkMetadata),artworkText:{displayed:!backCoverUsesImage(state),printed:!backCoverUsesImage(state),location:'generated-back-cover-only',typographyRoles:[...ARTWORK_FONT_ROLES],metadataLimits:{...ARTWORK_METADATA_LIMITS}},backCover:normalizeBackCover(state.backCover),backCoverStatus:backCoverStatus(state),endSpreadColor:normalizeEndSpreadColor(state.endSpreadColor),selection:calendarSelection(state),layout:normalizeLayout(state.layout),layoutPreview:layoutEditor.summary(),printColor:{...printColorSummary(state),analysis:printColorPanel.summary()},preview:previewSummary(),interiorSheets:saddle?7:13,coverSheets:saddle?1:2,physicalSheets:saddle?SADDLE_SHEET_COUNT:15,readerPage:{width:state.width,height:state.height},openSpread:{width:state.width,height:state.height*2},logicalPages:saddle?SADDLE_PAGE_COUNT:30,printSequence:sequence(),assets:assets.metadata(),preflight:{missing:check.missing,requiredPhotos:check.required,backCoverMode:check.backCoverMode,lowResolution:check.low,whiteGaps:check.gaps,pending:check.pending,ready:check.ready},pdf:{pages:saddle?16:30,trimWidth:state.width,trimHeight:saddle?state.height*2:state.height,bleedWidth:state.width+2*state.bleed,bleedHeight:(saddle?state.height*2:state.height)+2*state.bleed,colorSpace:'RGB',printerReviewRequired:true}};
 }
 function save() {
   try {localStorage.setItem(STORAGE_KEY,JSON.stringify(state));} catch {window.dispatchEvent(new CustomEvent('calendar-storage-error'));}
@@ -113,7 +115,6 @@ function renderAssets() {
 function syncInputs() {
   for(const key of ['year','width','height','bleed','margin','binding','week']) byId(key).value=state[key];
   byId('binding-style').value=state.bindingStyle;
-  byId('guides').checked=state.guides;
   byId('crop-marks').checked=Boolean(state.cropMarks);
 }
 function renderPreviewControls() {
@@ -163,9 +164,7 @@ function render() {
   const raster=printRasterSpec(state);
   byId('pixel-spec').textContent=`${raster.width} × ${raster.height} px / full photo`;
   byId('pixel-spec-note').textContent=`Pica resizes the saved crop to this exact raster · ${(raster.ppi<300?`${Math.floor(raster.ppi)} PPI memory-bound output; 300 PPI would need ${raster.preferredWidth} × ${raster.preferredHeight} px`:'target 300 PPI')} · resizing adds no source detail`;
-  byId('binding-title').textContent=saddle?'Top-bound / saddle stitch':'Top-bound / wire or coil';
   byId('binding-summary').textContent=`Selected binding: ${saddle?'Top-bound saddle stitch':'Wire / coil'} · controlled on Monthly spread`;
-  byId('binding-description').textContent=saddle?`Eight nested folded sheets: one cover-stock sheet plus seven interior sheets. Closed ${format(width)} × ${format(height)} in; opened ${format(width)} × ${format(height*2)} in. Full photo above the horizontal centerfold, full calendar grid below.`:'Two separate pages make each open spread. Photo above the binding; month grid below.';
   byId('binding-setting').hidden=saddle;
   byId('print-count').textContent=saddle?'8 folded sheets · 1 cover + 7 interior · 16 PDF sides':'13 interior sheets + 2 covers';
   byId('print-intro').textContent=saddle?`Top-bound calendar, not a side-bound book: each flat ${format(width)} × ${format(height*2)} in sheet folds horizontally to ${format(width)} × ${format(height)} in. The opened reader spread has an entire photo above an entire grid. There are 32 logical pages: 12 photo/grid pairs, front photo and exterior back artwork and six solid end faces (including inside covers). Opening is p2/p3; Closing in 3D is p30/p31, with the additional solid p28/p29 padding spread turned together. The original eight-sheet imposition is unchanged. Table positions are TOP/BOTTOM as viewed on each printed side.`:"The grid for one month shares a sheet with the next month's photo. Do not pair each month’s photo and grid on the same sheet: they must face you together across the binding.";
@@ -194,6 +193,7 @@ function render() {
     for(const text of [sheet.sheet,sheet.a,sheet.b,sheet.cover?'Duplex · cover stock':'Duplex · interior stock']) {const cell=document.createElement('td');cell.textContent=text;row.append(cell);}return row;
   }));
   renderAssets();
+  mobileWorkspace?.sync();
 }
 for(const key of ['year','width','height','bleed','margin','binding','week']) {
   byId(key).addEventListener('input',()=>{
@@ -225,8 +225,6 @@ byId('paper-roughness').addEventListener('input',()=>{
   const roughness=Number(byId('paper-roughness').value);if(!Number.isFinite(roughness))return;
   state.paperRoughness=Math.max(0.18,Math.min(0.98,roughness));renderPreviewControls();calendarScene.update(state);save();
 });
-byId('guides').addEventListener('change',()=>{state.guides=byId('guides').checked;render();save();});
-byId('reset').addEventListener('click',()=>{state={...DEFAULTS,artworkMetadata:normalizeArtworkMetadata(state.artworkMetadata)};photoEditor.setTarget(`month-${state.month}`);byId('error').textContent='';document.querySelectorAll('[aria-invalid]').forEach(input=>input.removeAttribute('aria-invalid'));syncInputs();render();save();});
 CALENDAR_SELECTIONS.filter(target=>target!=='cover').forEach(target=>{const button=document.createElement('button'),isMonth=typeof target==='number',name=isMonth?MONTHS[target]:target==='opening'?'Opening':'Closing';button.type='button';button.textContent=isMonth?name.slice(0,3):name;if(isMonth)button.dataset.month=target;else button.dataset.endSpread=target;button.setAttribute('aria-label',isMonth?name:`${name} spread`);button.setAttribute('aria-pressed','false');button.addEventListener('click',()=>selectCalendar(target));byId('month-strip').append(button);});
 document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{state.view=button.dataset.view;render();save();}));
 if(typeof window.Bezi?.onDataRequest==='function') {try {window.Bezi.onDataRequest(snapshot);} catch {}}
@@ -239,7 +237,7 @@ byId('three-scene').addEventListener('calendar-month-change',event=>{
 });
 photoEditor.setTarget(state.previewClosed?'front-cover':`month-${state.month}`);
 syncInputs();render();save();
-const specificationControls = ['reset-layout','image-picker-tab','layout-modifier-tab','back-cover-tab','back-cover-upload','back-cover-remove','back-cover-fill','back-cover-fit',...[...document.querySelectorAll('[data-back-control]')].map(control=>control.id),...[...document.querySelectorAll('[data-layout-control]')].map(control=>control.id),'year','width','height','bleed','margin','binding','binding-style','week','guides','crop-marks','reset','paper-gsm','cover-gsm','paper-finish','paper-roughness','print-color-target','print-color-paper','print-color-artwork','print-color-compare','print-color-3d','print-color-white','print-color-black','print-color-chroma','print-color-reset'];
+const specificationControls = ['reset-layout','image-picker-tab','layout-modifier-tab','back-cover-tab','back-cover-upload','back-cover-remove','back-cover-fill','back-cover-fit',...[...document.querySelectorAll('[data-back-control]')].map(control=>control.id),...[...document.querySelectorAll('[data-layout-control]')].map(control=>control.id),'year','width','height','bleed','margin','binding','binding-style','week','crop-marks','paper-gsm','cover-gsm','paper-finish','paper-roughness','print-color-target','print-color-paper','print-color-artwork','print-color-compare','print-color-3d','print-color-white','print-color-black','print-color-chroma','print-color-reset'];
 const pendingDisabledBefore = new Map();
 function syncPreparationLock() {
   if (assets.pending) {
@@ -302,3 +300,5 @@ for (const [index, details] of [...document.querySelectorAll('details')].entries
   if(typeof saved==='boolean') details.open=saved;
   details.addEventListener('toggle',()=>writePreference(key,details.open));
 }
+
+mobileWorkspace=createMobileWorkspace(()=>state,view=>{state.view=view;render();save();});

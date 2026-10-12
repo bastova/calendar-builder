@@ -1,7 +1,7 @@
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.183.0/three.module.min.js';
 
 import { MONTHS, drawCalendarGrid, saddlePage, readerState, SADDLE_SHEET_COUNT, validateSaddleImposition, normalizeLayout, normalizeArtworkMetadata, DEFAULT_END_SPREAD_COLOR, END_SPREADS, CALENDAR_SELECTIONS, normalizeEndSpreadColor, calendarSelectionIndex, calendarSelectionLabel } from './layout.js';
-import { assets, drawPhoto } from './media.js';
+import { backCoverUsesImage, assets, drawPhoto } from './media.js';
 import { drawBackCover, normalizeBackCover } from './back-cover.js';
 import { applyPaperEstimate, normalizePrintColor } from './print-color.js';
 const SHEET_COUNT = 13;
@@ -312,7 +312,7 @@ export function createCalendarScene(container) {
   }
 
   function paintPhoto(surface, key) {
-    const context = surface.getContext('2d'), record = assets.get(key);
+    const context = surface.getContext('2d'), record = key==='back-cover'&&!backCoverUsesImage(state)?null:assets.get(key);
     if (key==='back-cover'&&!record) drawBackCover(context,state,surface.width,surface.height,true);
     else if (record?.bitmap) {
       drawPhoto(context, record.bitmap, record.metadata.crop, state, surface.width, surface.height, true, record.metadata);
@@ -344,7 +344,7 @@ export function createCalendarScene(container) {
     const nextBackSignature=currentBackArtworkSignature(),backChanged=backArtworkSignature!==nextBackSignature;
     if (mediaRevision === assets.revision && !colorChanged && !backChanged) return;
     for (const [key, entry] of photoTextures) {
-      const generated=key==='back-cover'&&!assets.get(key);
+      const generated=key==='back-cover'&&!backCoverUsesImage(state);
       const revision = generated?assets.revision:assets.get(key)?.revision ?? -1;
       if (entry.revision === revision && !colorChanged && !(key==='back-cover'&&backChanged)) continue;
       paintPhoto(entry.map.image, key);
@@ -366,7 +366,7 @@ export function createCalendarScene(container) {
     if (kind === 'grid') drawCalendarGrid(context, readerState(state), month, surface.width, surface.height);
     if (!key && kind !== 'solid') guides(context, surface.width, surface.height);
     const map = canvasTexture(surface);
-    if (key) photoTextures.set(key, { map, revision: key==='back-cover'&&!assets.get(key)?assets.revision:assets.get(key)?.revision ?? -1 });
+    if (key) photoTextures.set(key, { map, revision: key==='back-cover'&&!backCoverUsesImage(state)?assets.revision:assets.get(key)?.revision ?? -1 });
     return map;
   }
 

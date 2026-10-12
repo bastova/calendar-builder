@@ -1,6 +1,6 @@
 import { readPreference, writePreference } from './browser-storage.js';
 import { MONTHS, normalizeLayout, normalizeArtworkMetadata, canvasFont, readerState } from './layout.js';
-import { assets, FILE_LIMIT, isPhotoEntry, safeRelativePath, drawPhoto, printRasterSpec, CENTER_CROP, cropForPlacement, photoPlacement, picaAvailable, resizeImageBitmapToCanvas } from './media.js';
+import { backCoverUsesImage, assets, FILE_LIMIT, isPhotoEntry, safeRelativePath, drawPhoto, printRasterSpec, CENTER_CROP, cropForPlacement, photoPlacement, picaAvailable, resizeImageBitmapToCanvas } from './media.js';
 
 const BACK_PREVIEW_MAX_EDGE = 4096;
 const BACK_PREVIEW_MAX_PIXELS = 16 * 1024 * 1024;
@@ -34,6 +34,7 @@ export function normalizeBackCover(value) {
   result.columns=Math.round(result.columns);
   for(const [key,options] of Object.entries({placement:['left','right','top','bottom'],alignX:['left','center','right'],alignY:['top','middle','bottom'],cropMode:CROP_MODES})) result[key]=options.includes(value?.[key])?value[key]:BACK_COVER_DEFAULTS[key];
   for(const key of ['background','cellBackground'])result[key]=validColor(value?.[key],BACK_COVER_DEFAULTS[key]);
+  result.mode=['dynamic','image'].includes(value?.mode)?value.mode:'auto';
   result.cellFill=value?.cellFill===true;
   MONTHS.forEach((_,month)=>{const key=`month-${month}`,source=value?.thumbnails?.[key];result.thumbnails[key]={mode:['inherit',...CROP_MODES].includes(source?.mode)?source.mode:THUMBNAIL_DEFAULTS.mode,x:bounded(source?.x,.5,0,1),y:bounded(source?.y,.5,0,1),zoom:bounded(source?.zoom,1,1,THUMBNAIL_ZOOM_MAX)};});
   return result;
@@ -41,8 +42,8 @@ export function normalizeBackCover(value) {
 
 /** Describe derived mode, effective geometry and constraints without discarding unavailable uploads. */
 export function backCoverStatus(state) {
-  const record=assets.get('back-cover'),missing=MONTHS.flatMap((_,month)=>assets.get(`month-${month}`)?.bitmap?[]:[MONTHS[month]]),plan=backCoverPlan(state);
-  return {mode:record?'uploaded':'generated',uploadedAvailable:Boolean(record?.bitmap),missingMonths:missing,ready:record?Boolean(record.bitmap):missing.length===0,settings:plan.settings,effective:plan.effective,notices:plan.notices,textPrinted:!record,thumbnailCropsIndependent:true,chronologicalMonths:MONTHS,raster:printRasterSpec(state)};
+  const record=backCoverUsesImage(state)?assets.get('back-cover'):null,missing=MONTHS.flatMap((_,month)=>assets.get(`month-${month}`)?.bitmap?[]:[MONTHS[month]]),plan=backCoverPlan(state);
+  return {mode:backCoverUsesImage(state)?'uploaded':'generated',uploadedAvailable:Boolean(record?.bitmap),missingMonths:missing,ready:backCoverUsesImage(state)?Boolean(record?.bitmap):missing.length===0,settings:plan.settings,effective:plan.effective,notices:plan.notices,textPrinted:!backCoverUsesImage(state),thumbnailCropsIndependent:true,chronologicalMonths:MONTHS,raster:printRasterSpec(state)};
 }
 
 /** Keep all twelve chronological cards disjoint, even with extreme page shapes and requested spacing. */
@@ -166,13 +167,13 @@ function beginArtwork(context,state,width,height,trim) {
 
 /** Shared flat / 3D / PDF artwork, with bounded captions and independent thumbnail transforms. */
 export function drawBackCover(context,state,width,height,trim=true,previewPhotos=true) {
-  const uploaded=assets.get('back-cover');
+  const uploaded=backCoverUsesImage(state)?assets.get('back-cover'):null;
   if(uploaded?.bitmap) {drawPhoto(context,uploaded.bitmap,uploaded.metadata.crop,state,width,height,trim,uploaded.metadata);return;}
   const plan=backCoverPlan(state);
   beginArtwork(context,state,width,height,trim);
   context.fillStyle=plan.settings.background;context.fillRect(-state.bleed,-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed);
-  if(uploaded) {
-    textBlock(context,'Uploaded back cover unavailable — reselect its folder or remove the upload to use the generated cover.',{family:'helvetica',style:'normal',size:14,color:'#555555',align:'center'},{x:state.margin,y:state.height*.4,width:state.width-2*state.margin,height:state.height*.2},3);
+  if(backCoverUsesImage(state)) {
+    textBlock(context,'Choose a back-cover image.',{family:'helvetica',style:'normal',size:14,color:'#555555',align:'center'},{x:state.margin,y:state.height*.4,width:state.width-2*state.margin,height:state.height*.2},3);
   } else for(const card of plan.cards) {
     const record=assets.get(card.key);
     if(plan.settings.cellFill){context.fillStyle=plan.settings.cellBackground;context.fillRect(card.x,card.y,card.width,card.height);}
@@ -261,7 +262,7 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     }
     label.append(control);byId('back-layout-controls').append(label);controls.push({key,control});
     control.addEventListener(type==='select'||type==='checkbox'?'change':'input',()=>{
-      if(locked()||assets.get('back-cover'))return;
+      if(locked()||backCoverUsesImage(getState()))return;
       let value=type==='checkbox'?control.checked:type==='number'?numericDraft(control,...(key==='imageShare'?[15,85]:NUMBER_FIELDS[key])):key==='columns'?Number(control.value):control.value;
       if(value===null)return;if(key==='imageShare')value/=100;
       if(type!=='number')fieldNotice='';
@@ -274,7 +275,7 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
   for(const [id,key,bounds] of [['back-thumbnail-mode','mode',null],['back-thumbnail-x','x',[0,100]],['back-thumbnail-y','y',[0,100]],['back-thumbnail-zoom','zoom',[1,THUMBNAIL_ZOOM_MAX]]]) {
     const control=byId(id);
     control.addEventListener(key==='mode'?'change':'input',()=>{
-      if(locked()||assets.get('back-cover'))return;
+      if(locked()||backCoverUsesImage(getState()))return;
       let value=bounds?numericDraft(control,...bounds):control.value;if(value===null)return;if(key==='x'||key==='y')value/=100;
       const settings=normalizeBackCover(getState().backCover),monthKey=`month-${thumbnailMonth}`;
       settings.thumbnails[monthKey]={...settings.thumbnails[monthKey],[key]:value};onSettingsChange(settings);
@@ -282,12 +283,11 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     control.addEventListener('blur',()=>{if(bounds){const saved=normalizeBackCover(getState().backCover).thumbnails[`month-${thumbnailMonth}`][key];control.value=String(key==='x'||key==='y'?saved*100:saved);}});
   }
   byId('back-thumbnail-reset').addEventListener('click',()=>{
-    if(locked()||assets.get('back-cover'))return;const settings=normalizeBackCover(getState().backCover);settings.thumbnails[`month-${thumbnailMonth}`]={...THUMBNAIL_DEFAULTS};fieldNotice=`${MONTHS[thumbnailMonth]} thumbnail framing reset; monthly crop and details kept.`;onSettingsChange(settings);
+    if(locked()||backCoverUsesImage(getState()))return;const settings=normalizeBackCover(getState().backCover);settings.thumbnails[`month-${thumbnailMonth}`]={...THUMBNAIL_DEFAULTS};fieldNotice=`${MONTHS[thumbnailMonth]} thumbnail framing reset; monthly crop and details kept.`;onSettingsChange(settings);
   });
-  byId('back-cover-reset-layout').addEventListener('click',()=>{if(locked()||assets.get('back-cover'))return;fieldNotice='Back grid and thumbnail framing reset. Uploads, monthly photos/crops, details and typography kept.';onSettingsChange(normalizeBackCover());});
+  byId('back-cover-reset-layout').addEventListener('click',()=>{if(locked()||backCoverUsesImage(getState()))return;fieldNotice='Back grid and thumbnail framing reset. Uploads, monthly photos/crops, details and typography kept.';onSettingsChange(normalizeBackCover({...BACK_COVER_DEFAULTS,mode:'dynamic'}));});
   function renderConstraints(summary=backCoverStatus(getState())) {
-    const effective=summary.effective,format=value=>value.toFixed(2);
-    byId('back-cover-constraints').textContent=[fieldNotice,summary.mode==='uploaded'?'Generated controls are retained but inactive while an uploaded back image takes precedence.':'',`Effective ${effective.columns} columns × ${effective.rows} rows; ${format(effective.cardWidth)} × ${format(effective.cardHeight)} in cards. Margins T / R / B / L: ${['top','right','bottom','left'].map(side=>format(effective.margins[side])).join(' / ')} in. H / V gaps: ${format(effective.gapX)} / ${format(effective.gapY)} in; padding ${format(effective.padding)} in.`,...summary.notices,'Artist / title / description: up to 2 / 2 / 4 lines. Fonts fit down to their box; overflowing text is ellipsized, never spills into images or neighboring cards. Full metadata remains saved.'].filter(Boolean).join(' ');
+    byId('back-cover-constraints').textContent=[fieldNotice,...summary.notices].filter(Boolean).join(' ');
   }
   function grantOptions() {
     const select=byId('back-cover-grants');select.replaceChildren();
@@ -300,7 +300,7 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     const list=byId('back-cover-file-list');list.replaceChildren();
     byId('back-cover-folder-path').textContent=`${grant?.name??'No folder'} / ${folder||'.'}`;
     render();
-    if(!grant?.available){status('Folder permission unavailable. Use Upload image from folder to reselect.');return;}
+    if(!grant?.available){status('Folder permission unavailable. Choose an image folder to restore access.');return;}
     try {
       const result=await files.list(grant.grantId,folder,{offset,limit:LIST_LIMIT});if(disposed||request!==token)return;total=result.total;
       for(const entry of result.entries) {
@@ -311,7 +311,7 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
         button.addEventListener('click',async()=>{
           if(locked())return;if(entry.kind==='directory'){await browse(entry.relativePath);return;}
           const chosenGrant=grant;
-          try {await assets.assign('back-cover',chosenGrant,entry,files,{...getState()},status);status(`Uploaded ${entry.name}. This image takes precedence; saved monthly metadata is unchanged.`);}
+          try {await assets.assign('back-cover',chosenGrant,entry,files,{...getState()},status);status('');}
           catch(error){status(`Upload failed: ${error.message}`);}finally{render();}
         });list.append(button);
       }
@@ -319,19 +319,24 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
       render();
     } catch(error){if(request===token)status(`Cannot browse folder: ${error.message}`);}
   }
+  function selectSource(mode) { if(locked())return;notice='';onSettingsChange(normalizeBackCover({...getState().backCover,mode})); }
+  for(const [id,mode] of [['back-dynamic-tab','dynamic'],['back-image-tab','image']]) {
+    byId(id).addEventListener('click',()=>selectSource(mode));
+    byId(id).addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const next=event.key==='Home'?'dynamic':event.key==='End'?'image':mode==='dynamic'?'image':'dynamic';selectSource(next);byId(next==='dynamic'?'back-dynamic-tab':'back-image-tab').focus();}});
+  }
   byId('back-cover-upload').addEventListener('click',async()=>{
     if(!available||locked())return;
     try {
       const selected=await files.requestDirectory({persistence:'persistent'});if(!selected||disposed)return;
       await assets.restore(files,status);grant=selected;grants=await files.getGrants();grantOptions();byId('back-cover-browser').hidden=false;
-      status('Choose an image below to upload to the back cover only.');await browse();
+      status('');await browse();
     } catch(error){status(`Folder selection failed: ${error.message}`);}
   });
   byId('back-cover-grants').addEventListener('change',()=>{grant=grants.find(item=>item.grantId===byId('back-cover-grants').value);browse();});
   byId('back-cover-parent').addEventListener('click',()=>browse(folder.split('/').slice(0,-1).join('/')));
   byId('back-cover-prev').addEventListener('click',()=>browse(folder,Math.max(0,offset-LIST_LIMIT)));
   byId('back-cover-next').addEventListener('click',()=>browse(folder,offset+LIST_LIMIT));
-  byId('back-cover-remove').addEventListener('click',()=>{if(!locked()){assets.remove('back-cover');status('Upload removed. The cover is generated live from monthly images and details.');render();}});
+  byId('back-cover-remove').addEventListener('click',()=>{if(!locked()){assets.remove('back-cover');status('');render();}});
   for(const mode of ['fill','fit'])byId(`back-cover-${mode}`).addEventListener('click',()=>{
     const record=assets.get('back-cover');if(locked()||!record?.bitmap)return;
     const state=getState(),aw=state.width+2*state.bleed,ah=state.height+2*state.bleed;
@@ -358,15 +363,20 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     zoomRange.value=String(Math.round(previewZoom*100));zoomValue.textContent=`${Math.round(previewZoom*100)}%`;
     zoomOut.disabled=locked()||previewZoom<=.25;zoomIn.disabled=locked()||previewZoom>=4;zoomFit.disabled=locked();zoomRange.disabled=locked();
     canvas.setAttribute('aria-label',summary.mode==='uploaded'?'Uploaded exterior back-cover trim preview':`Generated exterior back cover: January through December, ${settings.columns} columns, artist names, artwork titles and descriptions.`);
-    byId('back-cover-mode').textContent=summary.mode==='uploaded'?'UPLOADED IMAGE':'GENERATED / LIVE';
-    byId('back-cover-status').textContent=record?record.bitmap?`Using ${record.metadata.grantName} / ${record.metadata.relativePath}. Saved crop is respected in preview, 3D and PDF.`:`Saved upload unavailable: ${record.error||'restoration pending'}. Reselect its folder or remove the upload; it is not silently replaced.`:`Generated live from 12 chronological images with independent back-thumbnail framing and saved artist/title/description details.${summary.missingMonths.length?` Missing photos: ${summary.missingMonths.join(', ')}. Placeholders are preview only; normal PDF preflight still requires every month and the front cover.`:' All monthly photos are available.'}`;
+    const imageMode=backCoverUsesImage(state);
+    for(const [id,active] of [['back-dynamic-tab',!imageMode],['back-image-tab',imageMode]]){const tab=byId(id);tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;tab.disabled=locked();}
+    byId('back-dynamic-settings').hidden=imageMode;byId('back-image-settings').hidden=!imageMode;
+    byId('back-cover-browser').hidden=!imageMode||!grant;
+    byId('back-cover-mode').parentElement.hidden=true;
+    byId('back-cover-status').textContent=record?record.bitmap?`Using ${record.metadata.grantName} / ${record.metadata.relativePath}. Saved crop is respected in preview, 3D and PDF.`:`Saved upload unavailable: ${record.error||'restoration pending'}. Reselect its folder or remove the upload; it is not silently replaced.`:'';
+    byId('back-cover-status').hidden=!imageMode||!record||Boolean(record.bitmap);
     byId('back-cover-upload').disabled=!available||locked();byId('back-cover-remove').disabled=locked()||!record;
     for(const mode of ['fill','fit'])byId(`back-cover-${mode}`).disabled=locked()||!record?.bitmap;
-    for(const {key,control} of controls){if(document.activeElement!==control){if(control.type==='checkbox')control.checked=settings[key];else control.value=String(key==='imageShare'?settings[key]*100:settings[key]);}control.disabled=locked()||Boolean(record);}
+    for(const {key,control} of controls){if(document.activeElement!==control){if(control.type==='checkbox')control.checked=settings[key];else control.value=String(key==='imageShare'?settings[key]*100:settings[key]);}control.disabled=locked()||imageMode;}
     const thumbnail=settings.thumbnails[`month-${thumbnailMonth}`];
     byId('back-thumbnail-month').value=String(thumbnailMonth);
     for(const [id,value] of [['back-thumbnail-mode',thumbnail.mode],['back-thumbnail-x',thumbnail.x*100],['back-thumbnail-y',thumbnail.y*100],['back-thumbnail-zoom',thumbnail.zoom]]){const control=byId(id);if(document.activeElement!==control)control.value=String(value);}
-    for(const id of ['back-thumbnail-month','back-thumbnail-mode','back-thumbnail-x','back-thumbnail-y','back-thumbnail-zoom','back-thumbnail-reset','back-cover-reset-layout'])byId(id).disabled=locked()||Boolean(record);
+    for(const id of ['back-thumbnail-month','back-thumbnail-mode','back-thumbnail-x','back-thumbnail-y','back-thumbnail-zoom','back-thumbnail-reset','back-cover-reset-layout'])byId(id).disabled=locked()||imageMode;
     const monthRecord=assets.get(`month-${thumbnailMonth}`),mode=thumbnail.mode==='inherit'?settings.cropMode:thumbnail.mode;
     const selectedCard=backCoverPlan(state).cards[thumbnailMonth],thumbnailScale=THUMBNAIL_PREVIEW_EDGE/Math.max(selectedCard.photo.width,selectedCard.photo.height);
     thumbnailCanvas.width=Math.max(1,Math.round(selectedCard.photo.width*thumbnailScale));thumbnailCanvas.height=Math.max(1,Math.round(selectedCard.photo.height*thumbnailScale));
@@ -377,13 +387,13 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
       else {thumbnailContext.fillStyle='#eeeeee';thumbnailContext.fillRect(0,0,selectedCard.photo.width,selectedCard.photo.height);textBlock(thumbnailContext,'Photo missing',{family:'helvetica',style:'normal',size:9,color:'#555555',align:'center'},{x:0,y:0,width:selectedCard.photo.width,height:selectedCard.photo.height},2);}
       thumbnailContext.restore();
     }
-    byId('back-thumbnail-status').textContent=`${MONTHS[thumbnailMonth]} only · ${thumbnail.mode==='inherit'?'inherits global':'independent'} ${mode==='monthly'?'saved monthly trim':mode==='fill'?'original-source fill':'original-source fit'} · ${thumbnail.zoom.toFixed(2)}× zoom.${monthRecord?.bitmap?` Source ${monthRecord.metadata.sourceWidth} × ${monthRecord.metadata.sourceHeight} px.`:' Assign this monthly photo to see its framing; these settings can be saved first.'} Monthly image crop remains unchanged.`;
+    byId('back-thumbnail-status').textContent='';
     renderConstraints(summary);
     byId('back-cover-grants').disabled=locked();byId('back-cover-parent').disabled=locked()||!folder;
     byId('back-cover-prev').disabled=locked()||offset===0;byId('back-cover-next').disabled=locked()||offset+LIST_LIMIT>=total;
     byId('back-cover-page').textContent=`${Math.min(offset+1,total)}–${Math.min(offset+LIST_LIMIT,total)} of ${total} entries`;
     byId('back-cover-file-list').querySelectorAll('button').forEach(button=>{button.disabled=locked()||button.dataset.blocked==='true';});
-    byId('back-cover-message').textContent=notice||(!available?'Upload requires Bezi directory grants, bounded decoding and Pica. Generated-cover preview still works; no unpersisted file-picker fallback is used.':'');
+    byId('back-cover-message').textContent=notice||(!available&&imageMode?'Image folder access unavailable.':'');
   }
   /** Restore the browser list without requesting permission outside a user gesture. */
   async function restore() {

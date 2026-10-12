@@ -397,7 +397,7 @@ export function createPhotoEditor(getState, selectTarget, onMetadataChange) {
     byId('photo-name').textContent = record ? `${record.metadata.grantName} / ${record.metadata.relativePath}` : 'No photograph assigned';
     const dpi = record?.bitmap ? effectiveDpi({...record.metadata,crop},state) : 0;
     const spec=printRasterSpec(state);
-    byId('photo-resolution').textContent = record?.bitmap ? `${record.metadata.sourceWidth} × ${record.metadata.sourceHeight} original px · ${Math.floor(dpi)} effective DPI (minimum axis)${dpi<TARGET_PPI?' — below the 300 PPI target; resizing adds no detail':''} · current print target ${spec.width} × ${spec.height} px` : record?.error || 'Twelve monthly photos and the front cover are required; the back cover is generated unless an image is uploaded in its own tab.';
+    byId('photo-resolution').textContent = record?.bitmap ? `${record.metadata.sourceWidth} × ${record.metadata.sourceHeight} original px · ${Math.floor(dpi)} effective DPI (minimum axis)${dpi<TARGET_PPI?' — below the 300 PPI target; resizing adds no detail':''} · current print target ${spec.width} × ${spec.height} px` : record?.error || '';
     const gaps = placement && photoHasGaps({...record.metadata,crop},state);
     const snapLabel=snapGuides.length?` Snapped: ${snapGuides.map(guide=>guide.label).join(' · ')}.`:'';
     byId('crop-transform-status').textContent = placement
