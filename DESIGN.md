@@ -2,7 +2,7 @@
 
 ## Direction
 
-Calendar Layout Studio is a quiet, precise workspace for designing photo calendars. Keep the interface neutral and editorial so photographs and calendar previews remain the focus. Use clear hierarchy, compact controls and section spacing, and restrained decoration. Reserve generous space for the 3D artwork preview.
+Calendar Builder is a quiet, precise workspace for designing photo calendars. Keep the interface neutral and editorial so photographs and calendar previews remain the focus. Use clear hierarchy, compact controls and section spacing, and restrained decoration. Reserve generous space for the 3D artwork preview.
 
 ## Color and themes
 

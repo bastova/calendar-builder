@@ -4,7 +4,7 @@ export function GET() {
   return new ImageResponse(
     <div style={{ width: '100%', height: '100%', display: 'flex', background: '#18191b', color: '#fff', padding: 64, alignItems: 'center', gap: 64, fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-        <div style={{ fontSize: 22, color: '#fb923c', marginBottom: 28 }}>CALENDAR LAYOUT STUDIO</div>
+        <div style={{ fontSize: 22, color: '#fb923c', marginBottom: 28 }}>CALENDAR BUILDER</div>
         <div style={{ display: 'flex', flexDirection: 'column', fontSize: 66, lineHeight: 1.05, fontWeight: 700 }}><span>Your photos.</span><span>Your calendar.</span></div>
         <div style={{ fontSize: 26, color: '#d4d4d4', marginTop: 28 }}>Custom layouts · 3D preview · PDF export</div>
       </div>

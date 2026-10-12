@@ -154,7 +154,7 @@ async function downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes) {
   if(check.gaps.length) warnings.push(`White-gap warning: ${check.gaps.map(assetLabel).join(', ')} do not cover the full reader page and bleed; uncovered areas were printed white.`);
   if(!boxes) warnings.push('PDF page-box API unavailable: explicit trim/fold marks and 0.25 in outer slug were used; no TrimBox/BleedBox metadata claimed.');
   const mediaWidth=state.width+2*state.bleed,mediaHeight=state.height*2+2*state.bleed;
-  doc.setProperties({title:`${state.year} Photo Calendar — top-bound saddle-stitch imposition`,subject:'32 logical reader pages, 16 imposed PDF sides, 8 folded sheets: 1 cover-stock sheet plus 7 interior sheets. Solid opening p2/p3 and closing p28–31; shared end-spread color includes both inside covers. Horizontal centerfold; upper panels 180 degrees, lower panels 0 degrees. RGB, not PDF/X or ICC-converted.',creator:'Calendar Layout Studio'});
+  doc.setProperties({title:`${state.year} Photo Calendar — top-bound saddle-stitch imposition`,subject:'32 logical reader pages, 16 imposed PDF sides, 8 folded sheets: 1 cover-stock sheet plus 7 interior sheets. Solid opening p2/p3 and closing p28–31; shared end-spread color includes both inside covers. Horizontal centerfold; upper panels 180 degrees, lower panels 0 degrees. RGB, not PDF/X or ICC-converted.',creator:'Calendar Builder'});
   for(let index=0;index<sides.length;index++) {
     const side=sides[index];
     if(index) doc.addPage([mediaWidth+2*slug,mediaHeight+2*slug],mediaWidth>mediaHeight?'landscape':'portrait');
@@ -206,7 +206,7 @@ export async function downloadCalendarPdf(state,files,onProgress,{preview=false}
   const pages=printPages(),warnings=[];
   if(check.gaps.length) warnings.push(`White-gap warning: ${check.gaps.map(assetLabel).join(', ')} do not cover the full page and bleed; uncovered areas were printed white.`);
   if(!boxes) warnings.push('PDF page-box API unavailable: explicit trim crop marks and 0.25 in outer slug were used; no TrimBox/BleedBox metadata claimed.');
-  doc.setProperties({title:`${state.year} Photo Calendar — complete duplex layout`,subject:'30 pages in physical assembly order. Solid opening p2/p3 and closing p28/p29; shared end-spread color includes both inside covers. Printer review required; RGB, not PDF/X or ICC-converted.',creator:'Calendar Layout Studio'});
+  doc.setProperties({title:`${state.year} Photo Calendar — complete duplex layout`,subject:'30 pages in physical assembly order. Solid opening p2/p3 and closing p28/p29; shared end-spread color includes both inside covers. Printer review required; RGB, not PDF/X or ICC-converted.',creator:'Calendar Builder'});
   for(let index=0;index<pages.length;index++) {
     if(index) doc.addPage([aw+2*slug,ah+2*slug],aw>ah?'landscape':'portrait');
     if(boxes) setBoxes(doc,state,slug);

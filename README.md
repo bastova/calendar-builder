@@ -1,4 +1,4 @@
-# Calendar Layout Studio
+# Calendar Builder
 
 Install dependencies with `pnpm install`.
 

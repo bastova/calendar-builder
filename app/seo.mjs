@@ -1,5 +1,5 @@
-export const siteName = 'Calendar Layout Studio';
-export const title = 'Photo Calendar Maker & PDF Export | Calendar Layout Studio';
+export const siteName = 'Calendar Builder';
+export const title = 'Photo Calendar Maker & PDF Export | Calendar Builder';
 export const description = 'Create custom photo calendars with editable fonts, colors and layouts. Inspect a 3D preview, plan printing, and preview your calendar PDF before downloading.';
 
 /** Configure a stable public origin instead of publishing localhost or temporary tunnels. */
@@ -22,7 +22,7 @@ export function siteMetadata(url = publicSiteUrl()) {
     ...(url ? { metadataBase: url, alternates: { canonical: pageUrl.href } } : {}),
     robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1, 'max-video-preview': -1 } },
     openGraph: { title, description, siteName, type: 'website', locale: 'en_US',
-      ...(url ? { url: pageUrl.href, images: [{ url: imageUrl, width: 1200, height: 630, alt: 'Calendar Layout Studio — custom photo calendars, 3D preview and PDF export' }] } : {}) },
+      ...(url ? { url: pageUrl.href, images: [{ url: imageUrl, width: 1200, height: 630, alt: 'Calendar Builder — custom photo calendars, 3D preview and PDF export' }] } : {}) },
     twitter: { card: url ? 'summary_large_image' : 'summary', title, description,
       ...(url ? { images: [imageUrl] } : {}) },
     ...(process.env.GOOGLE_SITE_VERIFICATION ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } } : {})
