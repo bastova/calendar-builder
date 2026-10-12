@@ -446,3 +446,10 @@ main,.printing-mode main{display:block;max-width:none}
  .document-toolbar>.document-more>summary{box-sizing:border-box;min-height:32px;margin:0;padding:7px 12px;line-height:16px}
  .document-more>.holiday-popover{position:absolute;top:calc(100% + 8px);left:0;width:280px;max-width:calc(100vw - 40px);box-sizing:border-box;max-height:65vh;overflow:auto;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 24px #0002}
 }
+
+/* Stock controls use a contained form layout rather than the inline finish labels. */
+.viewer-materials>.stock-settings>.preview-controls{box-sizing:border-box;white-space:normal;max-height:65vh;overflow:auto}
+.viewer-options .stock-settings .preview-controls-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:0}
+.viewer-options .stock-settings .preview-controls-row label{display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0;font-size:11px;white-space:normal}
+.viewer-options .stock-settings .preview-controls-row select{width:100%;min-width:0;box-sizing:border-box;margin:0}
+.viewer-options .stock-settings .preview-stock-note{white-space:normal;overflow-wrap:anywhere}
