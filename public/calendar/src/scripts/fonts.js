@@ -93,7 +93,7 @@ export function loadCalendarFonts(){
   return loading ??= (async()=>{
     const embedded=[];
     await Promise.all(Object.entries(FONT_CATALOG).flatMap(([family,font])=>Object.entries(font.files).map(async([style,file])=>{
-      const response=await fetch(`/calendar/fonts/${family}/${file}`);
+      const response=await fetch(new URL(`../../fonts/${family}/${file}`, import.meta.url));
       if(!response.ok)throw new Error(`Unable to load ${font.label}. Reload to retry.`);
       const data=await response.arrayBuffer();
       const face=new FontFace(font.label,data,{weight:style.includes('bold')?'700':'400',style:style.includes('italic')?'italic':'normal'});

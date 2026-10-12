@@ -11,19 +11,25 @@ export function publicSiteUrl(value = process.env.SITE_URL) {
   }
   return url;
 }
+export function sitePageUrl(url = publicSiteUrl()) {
+  return url ? new URL(`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/`, url) : null;
+}
 export function siteMetadata(url = publicSiteUrl()) {
+  const pageUrl = sitePageUrl(url);
+  const imageUrl = pageUrl ? new URL('share-image.png', pageUrl).href : null;
   return {
     title, description, applicationName: siteName,
-    ...(url ? { metadataBase: url, alternates: { canonical: '/' } } : {}),
+    ...(url ? { metadataBase: url, alternates: { canonical: pageUrl.href } } : {}),
     robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1, 'max-video-preview': -1 } },
     openGraph: { title, description, siteName, type: 'website', locale: 'en_US',
-      ...(url ? { url: url.href, images: [{ url: '/share-image', width: 1200, height: 630, alt: 'Calendar Layout Studio — custom photo calendars, 3D preview and PDF export' }] } : {}) },
+      ...(url ? { url: pageUrl.href, images: [{ url: imageUrl, width: 1200, height: 630, alt: 'Calendar Layout Studio — custom photo calendars, 3D preview and PDF export' }] } : {}) },
     twitter: { card: url ? 'summary_large_image' : 'summary', title, description,
-      ...(url ? { images: ['/share-image'] } : {}) },
+      ...(url ? { images: [imageUrl] } : {}) },
     ...(process.env.GOOGLE_SITE_VERIFICATION ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } } : {})
   };
 }
 export function structuredData(url = publicSiteUrl()) {
+  url = sitePageUrl(url);
   const application = {
     '@context': 'https://schema.org', '@type': 'WebApplication', name: siteName,
     description, applicationCategory: 'DesignApplication', operatingSystem: 'Web browser', inLanguage: 'en',

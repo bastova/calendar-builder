@@ -1,5 +1,6 @@
-import { publicSiteUrl } from './seo.mjs';
+import { sitePageUrl } from './seo.mjs';
+export const dynamic = 'force-static';
 export default function sitemap() {
-  const url = publicSiteUrl();
+  const url = sitePageUrl();
   return url ? [{ url: url.href }] : [];
 }

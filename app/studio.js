@@ -13,7 +13,7 @@ const SCRIPT_SOURCES = [
 function loadScript(source, isModule) {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = source;
+    script.src = source.startsWith('/') ? `${process.env.NEXT_PUBLIC_BASE_PATH || ''}${source}` : source;
     if (isModule) script.type = 'module';
     script.onload = resolve;
     script.onerror = () => reject(new Error(`Unable to load ${source}. Check your connection and reload.`));
