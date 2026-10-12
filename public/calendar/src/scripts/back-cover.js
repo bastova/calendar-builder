@@ -345,7 +345,7 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     if(disposed)return;
     const state=getState(),summary=backCoverStatus(state),record=assets.get('back-cover'),settings=summary.settings;
     let focalX=.5,focalY=.5;
-    if(previewInitialized&&canvas.clientWidth&&canvas.clientHeight){const viewportRect=zoomViewport.getBoundingClientRect(),canvasRect=canvas.getBoundingClientRect();focalX=bounded(zoomViewport.clientWidth/2-(canvasRect.left-viewportRect.left),.5,0,1);focalY=bounded(zoomViewport.clientHeight/2-(canvasRect.top-viewportRect.top),.5,0,1);}
+    if(previewInitialized&&canvas.clientWidth&&canvas.clientHeight){const viewportRect=zoomViewport.getBoundingClientRect(),canvasRect=canvas.getBoundingClientRect();focalX=bounded((zoomViewport.clientWidth/2-(canvasRect.left-viewportRect.left))/canvasRect.width,.5,0,1);focalY=bounded((zoomViewport.clientHeight/2-(canvasRect.top-viewportRect.top))/canvasRect.height,.5,0,1);}
     const viewportWidth=zoomViewport.clientWidth||zoomViewport.parentElement?.clientWidth||560,viewportHeight=zoomViewport.clientHeight||420;
     const fitScale=Math.min(viewportWidth/state.width,viewportHeight/state.height),displayWidth=state.width*fitScale*previewZoom,displayHeight=state.height*fitScale*previewZoom;
     const pixelScale=Math.min(window.devicePixelRatio||1,BACK_PREVIEW_MAX_EDGE/displayWidth,BACK_PREVIEW_MAX_EDGE/displayHeight,Math.sqrt(BACK_PREVIEW_MAX_PIXELS/(displayWidth*displayHeight)));

@@ -45,7 +45,7 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 
 ## Print estimates
 
-- Clearly label the color panels as generic paper simulations, not calibrated printer previews. Printer selection changes media-fit checks and workflow guidance; never invent device-specific color accuracy.
+- Default to ICC soft proof using an exact user-assigned printer / ink / paper output profile. Save profiles per printer and paper. Without a profile, show unavailable rather than invented device colors. Keep the generic illustrative paper filter explicitly optional. Never claim a calibrated display or physical-print accuracy.
 - Keep manufacturer source links for each printer. Distinguish nominal sheet fit, known printable image area, and roll-width-only checks. Include bleed and the PDF export’s crop-mark fallback slug. Unsupported custom sizes and media settings require confirmation.
 
 ## Before changing the UI

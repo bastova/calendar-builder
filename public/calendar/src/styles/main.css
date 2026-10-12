@@ -212,6 +212,7 @@ main,.printing-mode main{display:block;max-width:none}
 #artwork-tabs .layout-controls,#artwork-tabs #layout-font-controls{display:block;width:100%}
 #artwork-tabs .flat-preview{position:static;width:100%}
 #artwork-tabs .flat-preview-surface canvas{max-height:280px}
+#artwork-tabs #back-cover-preview{max-width:none;max-height:none;flex:none;object-fit:contain}
 #artwork-tabs .flat-preview-surface{min-height:0;padding:10px}
 #artwork-tabs .crop-toolbar{display:block}
 #artwork-tabs .crop-actions{display:flex;flex-wrap:wrap;margin:8px 0}

@@ -1,3 +1,4 @@
+import { profileFor, profileRevision, loadProfile, proofPixels, restoreProfiles, saveProfile, removeProfile } from './icc-proof.js';
 import { PRINTERS, printerById, assessPrinterMedia } from './printers.js';
 import { pdfSheetGeometry } from './pdf-geometry.js';
 import { ASSET_KEYS, assetLabel, normalizeEndSpreadColor } from './layout.js';
@@ -28,18 +29,18 @@ export function normalizePrintColor(saved) {
     const defaults = PAPER_DEFAULTS[paper], values = saved?.assumptions?.[paper];
     return [paper, { white: bounded(values?.white, defaults.white, 60, 100), black: bounded(values?.black, defaults.black, 0, 20), chroma: bounded(values?.chroma, defaults.chroma, 0, 60) }];
   }));
-  return { target: printerById(saved?.target).id, paper: saved?.paper === 'uncoated' ? 'uncoated' : 'coated',
+  return { mode: saved?.mode === 'illustrative' ? 'illustrative' : 'icc', target: printerById(saved?.target).id, paper: saved?.paper === 'uncoated' ? 'uncoated' : 'coated',
     artwork: ASSET_KEYS.includes(saved?.artwork) ? saved.artwork : 'current', preview3d: saved?.preview3d === true, compare: saved?.compare !== false, assumptions };
 }
 
 /** Describe workflow recommendations separately from the unchanged RGB PDF output. */
 export function printColorSummary(state) {
   const settings = normalizePrintColor(state.printColor);
-  const printer=printerById(settings.target),commercial=printer.kind==='press';
-  return { ...settings, printer:printer.label, media:assessPrinterMedia(printer,pdfSheetGeometry(state)), source:printer.source, deviceColorProfileAvailable:false, simulationOnly: true, iccTransformApplied: false, calibrated: false, pdfColorSpace: 'RGB',
+  const printer=printerById(settings.target),commercial=printer.kind==='press', profile=settings.mode==='icc'&&profileFor(settings.target,settings.paper);
+  return { ...settings, printer:printer.label, media:assessPrinterMedia(printer,pdfSheetGeometry(state)), source:printer.source, deviceColorProfileAvailable:!!profile, profileName:profile?.name||null, simulationOnly: !profile, iccTransformApplied: !!profile, calibrated: false, pdfColorSpace: 'RGB',
     recommendedWorkflow: commercial ? 'Provider-approved color conversion / RIP workflow outside this tool' : 'RGB with exact printer/ink/paper ICC or driver-managed color, not both',
-    referenceCondition: `${printer.label}; exact output ICC required; no calibrated reference condition loaded`,
-    model: 'Decode assumed sRGB to linear RGB; Y=0.2126R+0.7152G+0.0722B; compress each channel toward Y; map black+(white-black)*channel; encode sRGB' };
+    referenceCondition: profile ? `${printer.label}; user-assigned ${profile.name}` : `${printer.label}; exact output ICC required`,
+    model: settings.mode==='icc'&&!profile ? 'Unavailable: exact output profile required' : profile ? 'LittleCMS 2.16: assumed sRGB → printer profile → sRGB; relative colorimetric rendering, absolute colorimetric proof (paper white and ink black); preview only' : 'Decode assumed sRGB to linear RGB; Y=0.2126R+0.7152G+0.0722B; compress each channel toward Y; map black+(white-black)*channel; encode sRGB' };
 }
 
 /** Mutate only a preview raster using a neutral linear-light heuristic, never an ICC transform. */
@@ -63,7 +64,9 @@ export function applyPaperEstimate(context, state) {
   const settings = normalizePrintColor(state.printColor);
   if (!settings.preview3d) return;
   const pixels = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
-  context.putImageData(simulatePaperPixels(pixels, settings.assumptions[settings.paper]), 0, 0);
+  const profile=profileFor(settings.target,settings.paper);
+  if(settings.mode==='icc'){if(!profile)return;proofPixels(pixels,profile);}else simulatePaperPixels(pixels,settings.assumptions[settings.paper]);
+  context.putImageData(pixels, 0, 0);
 }
 
 function luminanceMetrics(imageData) {
@@ -100,10 +103,29 @@ export function createPrintColorPanel(getState, onChange) {
   let signature = '', analysis = null;
   const listen = (id, type, handler) => { const node = byId(id); node.addEventListener(type, handler); controls.push(() => node.removeEventListener(type, handler)); };
   const commit = edit => { const settings = normalizePrintColor(getState().printColor); edit(settings); onChange(settings); };
-  for (const [id, field] of [['print-color-target', 'target'], ['print-color-paper', 'paper'], ['print-color-artwork', 'artwork']]) listen(id, 'change', () => commit(settings => { settings[field] = byId(id).value; }));
+  for (const [id, field] of [['print-color-mode', 'mode'], ['print-color-target', 'target'], ['print-color-paper', 'paper'], ['print-color-artwork', 'artwork']]) listen(id, 'change', () => commit(settings => { settings[field] = byId(id).value; }));
   for (const [id, field] of [['print-color-3d', 'preview3d'], ['print-color-compare', 'compare']]) listen(id, 'change', () => commit(settings => { settings[field] = byId(id).checked; }));
   for (const field of ['white', 'black', 'chroma']) listen(`print-color-${field}`, 'input', () => commit(settings => { settings.assumptions[settings.paper][field] = Number(byId(`print-color-${field}`).value); }));
   listen('print-color-reset', 'click', () => commit(settings => { settings.assumptions[settings.paper] = { ...PAPER_DEFAULTS[settings.paper] }; }));
+  let disposed=false;
+  restoreProfiles().then(()=>{if(!disposed){signature='';onChange(normalizePrintColor(getState().printColor));}}).catch(()=>{if(!disposed)byId('print-color-profile-status').textContent='Saved ICC profiles could not be restored. Import a profile to continue.';});
+  listen('print-color-profile','change',async()=>{
+    const input=byId('print-color-profile'),file=input.files?.[0];if(!file)return;
+    const settings=normalizePrintColor(getState().printColor);
+    try{
+      if(file.size>16*1024*1024)throw new Error('ICC profiles must be smaller than 16 MB.');
+      const entry=await loadProfile(settings.target,settings.paper,new Uint8Array(await file.arrayBuffer()),file.name);
+      let saved=true;try{await saveProfile(settings.target,settings.paper,entry);}catch{saved=false;}
+      signature='';onChange(normalizePrintColor(getState().printColor));
+      byId('print-color-profile-status').textContent=`${entry.name} assigned to ${printerById(settings.target).label} / ${paperLabel(settings.target,settings.paper)}.${saved?' Saved in this browser.':' Available this session; browser storage failed.'}`;
+    }catch(error){byId('print-color-profile-status').textContent=error.message;}
+    input.value='';
+  });
+  listen('print-color-profile-remove','click',async()=>{
+    const settings=normalizePrintColor(getState().printColor);removeProfile(settings.target,settings.paper);
+    try{await saveProfile(settings.target,settings.paper,null);}catch{byId('print-color-profile-status').textContent='Removed this session; browser storage failed.';}
+    signature='';onChange(settings);
+  });
   const targetSelect=byId('print-color-target');targetSelect.replaceChildren();
   for(const group of [...new Set(PRINTERS.map(printer=>printer.group))]){
     const optgroup=document.createElement('optgroup');optgroup.label=group;
@@ -116,7 +138,7 @@ export function createPrintColorPanel(getState, onChange) {
     const state = getState(), settings = normalizePrintColor(state.printColor), key = sourceKey(state, settings), record = assets.get(key),generated=key==='back-cover'&&!record,solid=['opening','closing'].includes(key);
     const alternate = settings.paper === 'coated' ? 'uncoated' : 'coated';
     surfaces[0].setAttribute('aria-label',solid?'Unlit solid end-spread color':generated?'Unlit generated back-cover artwork, including miniatures and metadata':'Unlit original photo in its saved trim crop');
-    for (const [id, field] of [['print-color-target', 'target'], ['print-color-paper', 'paper'], ['print-color-artwork', 'artwork']]) byId(id).value = settings[field];
+    for (const [id, field] of [['print-color-mode', 'mode'], ['print-color-target', 'target'], ['print-color-paper', 'paper'], ['print-color-artwork', 'artwork']]) byId(id).value = settings[field];
     for (const paper of PAPER_KEYS) byId('print-color-paper').querySelector(`[value="${paper}"]`).textContent = paperLabel(settings.target, paper);
     byId('print-color-3d').checked = settings.preview3d; byId('print-color-compare').checked = settings.compare;
     for (const field of ['white', 'black', 'chroma']) { byId(`print-color-${field}`).value = settings.assumptions[settings.paper][field]; byId(`print-color-${field}-value`).textContent = `${settings.assumptions[settings.paper][field]}%`; }
@@ -129,8 +151,15 @@ export function createPrintColorPanel(getState, onChange) {
     byId('print-color-workflow').textContent = printer.kind==='press'
       ? 'Use the print provider’s output profile and RIP settings. A named digital press does not imply FOGRA51/52 or a universal CMYK conversion.'
       : 'Use the exact printer / ink or toner / paper profile, or let the driver manage color. Avoid applying both. Confirm the media setting with the manufacturer.';
-    byId('print-color-output').textContent = 'Generic paper simulation · same color model for every printer · PDF remains RGB';
-    byId('print-color-3d-note').textContent = settings.preview3d ? 'Paper simulation on. Studio lighting changes appearance; use the unlit panels for comparison. PDF unchanged.' : '3D lighting is illustrative, not a color proof. PDF unchanged.';
+    const profile=profileFor(settings.target,settings.paper),icc=settings.mode==='icc';
+    byId('print-color-profile-name').textContent=profile?profile.name:'No ICC profile assigned to this printer / paper.';
+    byId('print-color-profile-remove').disabled=!profile;
+    byId('print-color-assumptions').hidden=icc;
+    byId('print-color-output').textContent=icc?(profile?'ICC soft proof · relative colorimetric · paper white / ink black simulated · PDF remains RGB':'Color estimate unavailable: import the exact printer / ink / paper ICC profile. PDF remains RGB.'):'Illustrative paper filter · not a printer prediction · PDF remains RGB';
+    byId('print-color-estimate-label').textContent=`${paperLabel(settings.target,settings.paper)} · ${icc?'ICC proof':'illustration'}`;
+    byId('print-color-alternate-label').textContent=`${paperLabel(settings.target,alternate)} · ${icc?'ICC proof':'illustration'}`;
+
+    byId('print-color-3d-note').textContent = settings.preview3d ? settings.mode==='icc'&&!profileFor(settings.target,settings.paper)?'No assigned ICC profile; 3D colors unchanged.':'Selected color preview on. Use the unlit panels for comparison; studio lighting changes appearance. PDF unchanged.' : '3D lighting is illustrative, not a color proof. PDF unchanged.';
     const format=value=>Number(value.toFixed(3));
     const sheet=`PDF sheet ${format(geometry.width)} × ${format(geometry.height)} in, including bleed${geometry.slug?' and crop-mark slug':''}.`;
     const reference=printer.sheet?`Listed sheet reference ${(printer.sheets||[printer.sheet]).map(size=>`${format(size[0])} × ${format(size[1])}`).join(' or ')} in.`:printer.rollWidth?`Roll width ${printer.rollWidth} in.`:'';
@@ -145,7 +174,7 @@ export function createPrintColorPanel(getState, onChange) {
     byId('print-color-media').classList.toggle('color-warning',media.status==='outside-reference'||media.status==='outside-width'||media.printable===false);
     const sourceLink=byId('printer-spec-source');sourceLink.href=printer.source;sourceLink.textContent=`${printer.label} specifications`;
     if (state.view !== 'printing') return;
-    const nextSignature = JSON.stringify([key, record?.revision, Boolean(record?.bitmap), state.width, state.height, state.bleed, state.endSpreadColor, settings,generated?[assets.revision,state.backCover,state.artworkMetadata,state.layout,state.margin,state.binding,state.bindingStyle]:null]);
+    const nextSignature = JSON.stringify([key, record?.revision, Boolean(record?.bitmap), state.width, state.height, state.bleed, state.endSpreadColor, settings,profileRevision(),generated?[assets.revision,state.backCover,state.artworkMetadata,state.layout,state.margin,state.binding,state.bindingStyle]:null]);
     if (signature === nextSignature) return;
     signature = nextSignature; analysis = null;
     if ((!record?.bitmap&&!generated&&!solid)||(generated&&!backCoverStatus(state).ready)) {
@@ -165,19 +194,22 @@ export function createPrintColorPanel(getState, onChange) {
       const estimates = {};
       for (const [index, paper] of [settings.paper, alternate].entries()) {
         const pixels = new ImageData(new Uint8ClampedArray(original.data), width, height);
-        simulatePaperPixels(pixels, settings.assumptions[paper]);
+        const assigned=profileFor(settings.target,paper);
+        if(icc&&!assigned){surfaces[index+1].hidden=true;byId(index===0?'print-color-estimate-metrics':'print-color-alternate-metrics').textContent='No profile for this printer / paper. Import its ICC file to estimate colors.';continue;}
+        if(icc)proofPixels(pixels,assigned);else simulatePaperPixels(pixels, settings.assumptions[paper]);
+        surfaces[index+1].setAttribute('aria-label',icc?`ICC soft proof using ${assigned.name}`:'Illustrative paper filter');
         surfaces[index + 1].getContext('2d').putImageData(pixels, 0, 0);
         estimates[paper] = luminanceMetrics(pixels);
         byId(index === 0 ? 'print-color-estimate-metrics' : 'print-color-alternate-metrics').textContent = `${metricText(estimates[paper])} · ${deltaText(source, estimates[paper])}`;
       }
       byId('print-color-source-metrics').textContent = metricText(source);
-      byId('print-color-status').textContent = `Simulation statistics from a ${width} × ${height} px preview of ${solid?'the solid end spread':generated?'generated back-cover artwork (photos and text)':'this trim crop, including white gaps'}. Assumed sRGB; browser decoding / display management may differ. Mean Y is linear relative luminance, not perceived brightness; P95–P5 is an image tonal span, not printer contrast. Deltas are estimates versus this source, not vendor measurements.`;
-      analysis = { artwork: key,solidEndSpread:solid,generatedBackCover:generated, sample: { width, height }, source, estimates, assumptions: settings.assumptions, imageDerived: true, notPrinterMeasurements: true };
+      byId('print-color-status').textContent = `${icc?'ICC proof':'Illustration'} statistics from a ${width} × ${height} px preview of ${solid?'the solid end spread':generated?'generated back-cover artwork (photos and text)':'this trim crop, including white gaps'}. Assumed sRGB; browser decoding / display management may differ. Mean Y is linear relative luminance, not perceived brightness; P95–P5 is an image tonal span, not printer contrast. Deltas are estimates versus this source, not vendor measurements.`;
+      analysis = { artwork: key,solidEndSpread:solid,generatedBackCover:generated, sample: { width, height }, source, estimates, assumptions: settings.assumptions, imageDerived: true, notPrinterMeasurements: true, mode:settings.mode, profiles:Object.fromEntries(PAPER_KEYS.map(p=>[p,profileFor(settings.target,p)?.name||null])) };
     } catch {
       surfaces.forEach(canvas => { canvas.width = canvas.height = 1; canvas.hidden = true; });
       for (const id of ['print-color-source-metrics', 'print-color-estimate-metrics', 'print-color-alternate-metrics']) byId(id).textContent = 'Analysis unavailable.';
       byId('print-color-status').textContent = 'This browser could not read the preview pixels. Originals and PDF export remain unchanged.';
     }
   }
-  return { render, summary: () => getState().view === 'printing' ? analysis : null, dispose() { controls.forEach(remove => remove()); surfaces.forEach(canvas => { canvas.width = canvas.height = 1; }); } };
+  return { render, summary: () => getState().view === 'printing' ? analysis : null, dispose() { disposed=true; controls.forEach(remove => remove()); surfaces.forEach(canvas => { canvas.width = canvas.height = 1; }); } };
 }
