@@ -8,7 +8,7 @@ import { FONT_LABELS, FONT_CATALOG } from './fonts.js';
 const ROLE_LABELS = {title:'Month title',year:'Year',weekday:'Weekday headings',date:'Date numbers',holiday:'Holiday names',artist:'Artist name',artworkTitle:'Artwork title',description:'Artwork description'};
 const STYLE_OPTIONS = [['normal','Regular'],['bold','Bold'],['italic','Italic'],['bolditalic','Bold italic']];
 const ALIGN_OPTIONS = [['left','Left'],['center','Center'],['right','Right']];
-const GRID_FIELDS = [['cellBackground','Date-cell background','color'],['lineColor','Grid line color','color'],['lineWidth','Grid stroke width · pt','number'],['holidayContrast','Auto-contrast holiday text','checkbox']];
+const GRID_FIELDS = [['cellBackground','Date-cell background','color'],['lineColor','Grid line color','color'],['lineWidth','Grid stroke width · pt','number']];
 const SPACING_FIELDS = [['insetX','Extra left/right inset · in'],['insetTop','Extra top inset · in'],['insetBottom','Extra bottom inset · in'],['headingHeight','Heading area height · in'],['headingGap','Heading → weekday gap · in'],['weekdayHeight','Weekday area height · in'],['weekdayGap','Weekday → grid gap · in'],['paddingX','Cell horizontal padding · in'],['paddingY','Cell vertical padding · in'],['holidayGap','Date → holiday gap · in'],['holidayLines','Maximum holiday lines']];
 const byId = id => document.getElementById(id);
 
@@ -88,6 +88,9 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
     createControl(fields,'Font style',['fonts',role,'style'],'select',STYLE_OPTIONS);
     createControl(fields,'Text color',['fonts',role,'color'],'color');
     createControl(fields,'Horizontal alignment',['fonts',role,'align'],'select',ALIGN_OPTIONS);
+    if(role==='holiday') {
+      createControl(fields,'Auto-contrast holiday text',['holidayContrast'],'checkbox');
+    }
   }
   const gridFields=byId('layout-grid-controls');
   createControl(gridFields,GRID_FIELDS[0][1],[GRID_FIELDS[0][0]],GRID_FIELDS[0][2]);
@@ -149,7 +152,7 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
     byId('layout-preview-title').textContent=`${title}${state.previewClosed?' · selected month (cover shown in 3D)':''}`;
     byId('layout-preview-title').nextElementSibling.textContent=endSelected?'FLAT / FULL SPREAD':'FLAT / TRIM PAGE';
     canvas.setAttribute('aria-label',endSelected?`${title}. Both full-page halves use ${endSpreadColor.value}, with no photo or date grid.`:`${title}, flat six-row calendar. ${state.week===1?'Monday':'Sunday'} first. Global layout applies to all twelve months.`);
-    byId('layout-preview-caption').textContent=endSelected?'Both halves of the opening and closing spreads use the shared End spreads color. Inside covers match; exterior cover photos are unchanged. Solid artwork extends through applicable PDF bleed. Colors are RGB, not a print proof.':'Colors are RGB, not a print proof.';
+    byId('layout-preview-caption').textContent=endSelected?'Both halves of enabled opening and closing spreads use this shared color. Required booklet padding uses the same color; exterior cover artwork is unchanged. Solid artwork extends through applicable PDF bleed. Colors are RGB, not a print proof.':'Colors are RGB, not a print proof.';
     const previewHeight=state.height*(endSelected?2:1),scale=Math.min(PREVIEW_LONG_EDGE/Math.max(state.width,previewHeight),Math.sqrt(PREVIEW_MAX_PIXELS/(state.width*previewHeight)));
     canvas.width=Math.max(1,Math.round(state.width*scale));canvas.height=Math.max(1,Math.round(previewHeight*scale));
     lastPlan=null;

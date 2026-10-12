@@ -95,56 +95,57 @@ export const normalizeEndSpreadColor = value => color(value,DEFAULT_END_SPREAD_C
 /** Keep the explicit selected month valid while navigating the cover and end spreads. */
 export const calendarSelection = state => state.previewClosed ? 'cover' : END_SPREADS.includes(state.endSpread) ? state.endSpread : state.month;
 /** Return the physical reader navigation position, independent of binding style. */
-export const calendarSelectionIndex = state => CALENDAR_SELECTIONS.indexOf(calendarSelection(state));
+export const calendarSelections = (state = {}) => CALENDAR_SELECTIONS.filter(selection => selection !== 'opening' && selection !== 'closing' || state[selection === 'opening' ? 'includeOpeningSpread' : 'includeClosingSpread'] !== false);
+export const calendarSelectionIndex = state => calendarSelections(state).indexOf(calendarSelection(state));
 /** Describe a reader selection without treating end spreads as month indexes. */
 export const calendarSelectionLabel = state => {const selection=calendarSelection(state);return selection==='cover'?'Cover':selection==='opening'?'Opening':selection==='closing'?'Closing':MONTHS[selection];};
 export const ASSET_KEYS = [...MONTHS.map((_, index) => `month-${index}`), 'front-cover', 'back-cover'];
 export const assetLabel = key => key.startsWith('month-') ? `${MONTHS[Number(key.slice(6))]} photo` : key === 'front-cover' ? 'Front cover outside' : 'Back cover outside';
 
+/** Build one reader order for navigation, 3D, assembly and PDF export. */
+export function calendarPagePlan(state = {}) {
+  const pages = printPages(state);
+  const saddle = state.bindingStyle === 'saddle';
+  const paddingPages = saddle ? (4 - pages.length % 4) % 4 : 0;
+  // Keep all month photo/grid pairs facing. Any required booklet padding stays
+  // after December, before the optional closing spread and back exterior.
+  const paddingIndex = pages.length - (state.includeClosingSpread !== false ? 3 : 1);
+  pages.splice(paddingIndex, 0, ...Array.from({length:paddingPages}, () => ({kind:'solid',padding:true,label:'Required booklet padding · end-spread color'})));
+  const logicalPages = pages.length;
+  const physicalSheets = saddle ? logicalPages / 4 : logicalPages / 2;
+  const imposition = saddle ? Array.from({length:physicalSheets}, (_, index) => ({
+    front:[logicalPages-index*2,1+index*2],
+    reverse:[2+index*2,logicalPages-1-index*2],rotations:[180,0]
+  })) : [];
+  return {pages,logicalPages,physicalSheets,coverSheets:saddle?1:2,
+    interiorSheets:physicalSheets-(saddle?1:2),pdfPages:saddle?physicalSheets*2:logicalPages,
+    leafCount:logicalPages/2,paddingPages,imposition};
+}
+// Default exports retained for consumers of the original all-spreads plan.
 export const SADDLE_PAGE_COUNT = 32;
-export const SADDLE_SHEET_COUNT = SADDLE_PAGE_COUNT / 4;
-/** Top/bottom logical pages viewed from each printed side; upper panels are head-to-head. */
-export const SADDLE_IMPOSITION = [
-  {front:[32,1],reverse:[2,31]},
-  {front:[30,3],reverse:[4,29]},
-  {front:[28,5],reverse:[6,27]},
-  {front:[26,7],reverse:[8,25]},
-  {front:[24,9],reverse:[10,23]},
-  {front:[22,11],reverse:[12,21]},
-  {front:[20,13],reverse:[14,19]},
-  {front:[18,15],reverse:[16,17]}
-].map(sheet=>({...sheet,rotations:[180,0]}));
+export const SADDLE_SHEET_COUNT = 8;
+export const SADDLE_IMPOSITION = calendarPagePlan({bindingStyle:'saddle'}).imposition;
 
-/** Full-size reader pages; solid end faces reuse the multiple-of-four booklet padding. */
-export function saddlePage(pageNumber, year) {
-  if (pageNumber === 1) return {kind:'photo',key:'front-cover',label:'Front cover outside'};
-  if (pageNumber === 2) return {kind:'solid',label:'Opening · front cover inside · end-spread color'};
-  if (pageNumber >= 4 && pageNumber <= 27) {
-    const month=Math.floor((pageNumber-4)/2),photo=pageNumber%2===0;
-    return photo ? {kind:'photo',key:`month-${month}`,month,label:`${MONTHS[month]} ${year} · photo`} : {kind:'grid',month,label:`${MONTHS[month]} ${year} · grid`};
-  }
-  if (pageNumber === 3) return {kind:'solid',label:'Opening · interior end face · end-spread color'};
-  if ([28,29].includes(pageNumber)) return {kind:'solid',label:'Closing · solid booklet padding · end-spread color'};
-  if (pageNumber === 30) return {kind:'solid',label:'Closing · interior end face · end-spread color'};
-  if (pageNumber === 31) return {kind:'solid',label:'Closing · back cover inside · end-spread color'};
-  if (pageNumber === 32) return {kind:'photo',key:'back-cover',label:'Back cover outside'};
-  throw new RangeError('Saddle booklet pages are numbered 1–32.');
+export function saddlePage(pageNumber, year, state = {}) {
+  const page = calendarPagePlan({...state,bindingStyle:'saddle'}).pages[pageNumber-1];
+  if (!Number.isInteger(pageNumber) || !page) throw new RangeError('Invalid saddle booklet page number.');
+  return {...page,label:typeof page.month==='number' ? `${MONTHS[page.month]} ${year} · ${page.kind}` : page.label};
 }
 
 /** Saddle grids use the identical full reader-page geometry without a punched binding reserve. */
 export const readerState = state => state.bindingStyle==='saddle' ? {...state,binding:0} : state;
 
 /** Refuse an incomplete imposition or a photo/grid pair that does not face across the fold. */
-export function validateSaddleImposition(year) {
-  const pages=SADDLE_IMPOSITION.flatMap(sheet=>[...sheet.front,...sheet.reverse]);
-  if (SADDLE_IMPOSITION.length!==SADDLE_SHEET_COUNT || pages.length!==SADDLE_PAGE_COUNT || new Set(pages).size!==SADDLE_PAGE_COUNT || pages.some(page=>!Number.isInteger(page)||page<1||page>SADDLE_PAGE_COUNT)) throw new Error('Every logical page 1–32 must occur exactly once on eight folded sheets.');
-  const kinds=pages.reduce((counts,page)=>{const kind=saddlePage(page,year).kind;counts[kind]=(counts[kind]??0)+1;return counts;},{});
-  if(kinds.photo!==14 || kinds.grid!==12 || kinds.solid!==6) throw new Error('Saddle booklet must contain 14 full photos, 12 full grids and 6 solid end faces (including both inside covers).');
-  if([2,3,28,29,30,31].some(page=>saddlePage(page,year).kind!=='solid')) throw new Error('Opening p2/p3 and closing p28/p29, p30/p31 must be fully solid.');
+export function validateSaddleImposition(year, state = {}) {
+  const plan=calendarPagePlan({...state,bindingStyle:'saddle'});
+  const numbers=plan.imposition.flatMap(sheet=>[...sheet.front,...sheet.reverse]);
+  if(numbers.length!==plan.logicalPages || new Set(numbers).size!==plan.logicalPages || numbers.some(page=>!Number.isInteger(page)||page<1||page>plan.logicalPages)) throw new Error('Every reader page must occur exactly once in saddle imposition.');
   MONTHS.forEach((_,month)=>{
-    const photo=saddlePage(4+month*2,year),grid=saddlePage(5+month*2,year);
-    if(photo.kind!=='photo'||grid.kind!=='grid'||photo.month!==month||grid.month!==month) throw new Error('Each month requires an even photo above the following odd grid.');
+    const index=plan.pages.findIndex(page=>page.kind==='photo'&&page.month===month);
+    const grid=plan.pages[index+1];
+    if(index%2!==1 || grid?.kind!=='grid' || grid.month!==month) throw new Error('Each month requires an even photo above the following odd grid.');
   });
+  if(plan.pages.filter(page=>page.kind==='photo').length!==14 || plan.pages.filter(page=>page.kind==='grid').length!==12) throw new Error('All cover artwork and twelve photo/grid pairs are required.');
   return true;
 }
 
@@ -260,9 +261,15 @@ export function drawCalendarGrid(context,state,month,width,height) {
 }
 
 /** Physical assembly order, including both faces of each cover leaf. */
-export function printPages() {
-  const pages = [{kind:'photo',key:'front-cover',label:'Front cover outside'}, {kind:'solid',label:'Opening · front cover inside · end-spread color'}, {kind:'solid',label:'Opening · interior end face · end-spread color'}];
-  MONTHS.forEach((name, month) => pages.push({kind:'photo',key:`month-${month}`,label:`${name} photo`}, {kind:'grid',month,label:`${name} grid`}));
-  pages.push({kind:'solid',label:'Closing · interior end face · end-spread color'}, {kind:'solid',label:'Closing · back cover inside · end-spread color'}, {kind:'photo',key:'back-cover',label:'Back cover outside'});
+export function printPages(state = {}) {
+  const pages = [{kind:'photo',key:'front-cover',label:'Front cover outside'}];
+  if(state.includeOpeningSpread !== false) pages.push(
+    {kind:'solid',endSpread:'opening',label:'Opening · front cover inside · end-spread color'},
+    {kind:'solid',endSpread:'opening',label:'Opening · interior end face · end-spread color'});
+  MONTHS.forEach((name, month) => pages.push({kind:'photo',key:`month-${month}`,month,label:`${name} photo`}, {kind:'grid',month,label:`${name} grid`}));
+  if(state.includeClosingSpread !== false) pages.push(
+    {kind:'solid',endSpread:'closing',label:'Closing · interior end face · end-spread color'},
+    {kind:'solid',endSpread:'closing',label:'Closing · back cover inside · end-spread color'});
+  pages.push({kind:'photo',key:'back-cover',label:'Back cover outside'});
   return pages;
 }

@@ -1,5 +1,5 @@
 import { pdfSheetGeometry } from './pdf-geometry.js';
-import { ASSET_KEYS, assetLabel, printPages, calendarLayout, SADDLE_IMPOSITION, saddlePage, readerState, validateSaddleImposition, normalizeEndSpreadColor } from './layout.js';
+import { ASSET_KEYS, assetLabel, printPages, calendarLayout, calendarPagePlan, readerState, validateSaddleImposition, normalizeEndSpreadColor } from './layout.js';
 import { backCoverUsesImage, assets, effectiveDpi, photoHasGaps, picaAvailable, printRasterSpec, printPhotoCanvas, TARGET_PPI, drawPhoto } from './media.js';
 
 import { printGeneratedBackCover, drawBackCover } from './back-cover.js';
@@ -145,8 +145,9 @@ function saddleMarks(doc,state,slug,side,index) {
 }
 
 async function downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes) {
-  validateSaddleImposition(state.year);
-  const sides=SADDLE_IMPOSITION.flatMap((sheet,index)=>[
+  validateSaddleImposition(state.year,state);
+  const plan=calendarPagePlan(state);
+  const sides=plan.imposition.flatMap((sheet,index)=>[
     {sheet:index+1,side:'A',pages:sheet.front,rotations:sheet.rotations},
     {sheet:index+1,side:'B',pages:sheet.reverse,rotations:sheet.rotations}
   ]);
@@ -154,15 +155,15 @@ async function downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes) {
   if(check.gaps.length) warnings.push(`White-gap warning: ${check.gaps.map(assetLabel).join(', ')} do not cover the full reader page and bleed; uncovered areas were printed white.`);
   if(!boxes) warnings.push('PDF page-box API unavailable: explicit trim/fold marks and 0.25 in outer slug were used; no TrimBox/BleedBox metadata claimed.');
   const mediaWidth=state.width+2*state.bleed,mediaHeight=state.height*2+2*state.bleed;
-  doc.setProperties({title:`${state.year} Photo Calendar — top-bound saddle-stitch imposition`,subject:'32 logical reader pages, 16 imposed PDF sides, 8 folded sheets: 1 cover-stock sheet plus 7 interior sheets. Solid opening p2/p3 and closing p28–31; shared end-spread color includes both inside covers. Horizontal centerfold; upper panels 180 degrees, lower panels 0 degrees. RGB, not PDF/X or ICC-converted.',creator:'Calendar Builder'});
+  doc.setProperties({title:`${state.year} Photo Calendar — top-bound saddle-stitch imposition`,subject:`${plan.logicalPages} logical reader pages, ${plan.pdfPages} imposed PDF sides, ${plan.physicalSheets} folded sheets: 1 cover-stock sheet plus ${plan.interiorSheets} interior sheets. Opening spread ${state.includeOpeningSpread!==false?'included':'omitted'}; closing spread ${state.includeClosingSpread!==false?'included':'omitted'}; ${plan.paddingPages} required booklet padding pages. Horizontal centerfold; upper panels 180 degrees, lower panels 0 degrees. RGB, not PDF/X or ICC-converted.`,creator:'Calendar Builder'});
   for(let index=0;index<sides.length;index++) {
     const side=sides[index];
     if(index) doc.addPage([mediaWidth+2*slug,mediaHeight+2*slug],mediaWidth>mediaHeight?'landscape':'portrait');
     if(boxes) setBoxes(doc,spreadState,slug);
-    onProgress(`Rendering sheet ${side.sheet} · Side ${side.side} · PDF ${index+1} / 16 · ${side.sheet===1?'cover':'interior'} stock`);
+    onProgress(`Rendering sheet ${side.sheet} · Side ${side.side} · PDF ${index+1} / ${plan.pdfPages} · ${side.sheet===1?'cover':'interior'} stock`);
     await breathe();
     for(let panelIndex=0;panelIndex<2;panelIndex++) {
-      const page=saddlePage(side.pages[panelIndex],state.year);
+      const page=plan.pages[side.pages[panelIndex]-1];
       const jpeg=page.kind==='photo' ? await photoArtwork(page.key,state,files,warnings,onProgress) : null;
       saddlePanel(doc,state,panelIndex,side.rotations[panelIndex],slug,pdf=>{
         if(jpeg) pdf.addImage(jpeg,'JPEG',-state.bleed,-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed,undefined,'NONE');
@@ -172,16 +173,16 @@ async function downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes) {
     }
     if(state.cropMarks||!boxes) saddleMarks(doc,state,slug,side,index);
   }
-  if(doc.getNumberOfPages()!==16) throw new Error('Unexpected saddle-stitch PDF page count; download cancelled.');
-  onProgress('Packaging 16 imposed sides / 8 folded sheets…');await breathe();
-  if(state.pdfPreview) return {blob:doc.output('blob'),pages:16,warnings,filename:`photo-calendar-${state.year}-preview.pdf`};
+  if(doc.getNumberOfPages()!==plan.pdfPages) throw new Error('Unexpected saddle-stitch PDF page count; download cancelled.');
+  onProgress(`Packaging ${plan.pdfPages} imposed sides / ${plan.physicalSheets} folded sheets…`);await breathe();
+  if(state.pdfPreview) return {blob:doc.output('blob'),pages:plan.pdfPages,warnings,filename:`photo-calendar-${state.year}-preview.pdf`};
   const blob=doc.output('blob'),url=URL.createObjectURL(blob),anchor=document.createElement('a');
-  anchor.href=url;anchor.download=`photo-calendar-${state.year}-saddle-stitched-16-pages.pdf`;document.body.append(anchor);
+  anchor.href=url;anchor.download=`photo-calendar-${state.year}-saddle-stitched-${plan.pdfPages}-pages.pdf`;document.body.append(anchor);
   try {anchor.click();} finally {anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),URL_LIFETIME);}
-  return {pages:16,logicalPages:32,physicalSheets:8,coverSheets:1,interiorSheets:7,mediaWidth:mediaWidth+2*slug,mediaHeight:mediaHeight+2*slug,boxes,marks:state.cropMarks||!boxes,warnings};
+  return {pages:plan.pdfPages,logicalPages:plan.logicalPages,physicalSheets:plan.physicalSheets,coverSheets:plan.coverSheets,interiorSheets:plan.interiorSheets,mediaWidth:mediaWidth+2*slug,mediaHeight:mediaHeight+2*slug,boxes,marks:state.cropMarks||!boxes,warnings};
 }
 
-/** Build one complete 30-page duplex assembly PDF, without screenshots or UI art. */
+/** Build the selected duplex assembly PDF from the shared reader page plan. */
 export async function downloadCalendarPdf(state,files,onProgress,{preview=false}={}) {
   state={...state,pdfPreview:preview};
   if(!preview&&!files) throw new Error('Local photo directory access is unavailable.');
@@ -203,10 +204,10 @@ export async function downloadCalendarPdf(state,files,onProgress,{preview=false}
   const denied=(preview?[]:requiredPhotoKeys(state)).filter(key=>!grants.some(grant=>grant.available&&grant.grantId===assets.get(key).metadata.grantId));
   if(denied.length) throw new Error(`Folder permissions unavailable: ${denied.map(assetLabel).join(', ')}. Reselect and reassign these images.`);
   if(state.bindingStyle==='saddle') return await downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes);
-  const pages=printPages(),warnings=[];
+  const pages=printPages(state),warnings=[];
   if(check.gaps.length) warnings.push(`White-gap warning: ${check.gaps.map(assetLabel).join(', ')} do not cover the full page and bleed; uncovered areas were printed white.`);
   if(!boxes) warnings.push('PDF page-box API unavailable: explicit trim crop marks and 0.25 in outer slug were used; no TrimBox/BleedBox metadata claimed.');
-  doc.setProperties({title:`${state.year} Photo Calendar — complete duplex layout`,subject:'30 pages in physical assembly order. Solid opening p2/p3 and closing p28/p29; shared end-spread color includes both inside covers. Printer review required; RGB, not PDF/X or ICC-converted.',creator:'Calendar Builder'});
+  doc.setProperties({title:`${state.year} Photo Calendar — complete duplex layout`,subject:`${pages.length} pages in physical assembly order. Opening spread ${state.includeOpeningSpread!==false?'included':'omitted'}; closing spread ${state.includeClosingSpread!==false?'included':'omitted'}. Printer review required; RGB, not PDF/X or ICC-converted.`,creator:'Calendar Builder'});
   for(let index=0;index<pages.length;index++) {
     if(index) doc.addPage([aw+2*slug,ah+2*slug],aw>ah?'landscape':'portrait');
     if(boxes) setBoxes(doc,state,slug);
@@ -217,14 +218,14 @@ export async function downloadCalendarPdf(state,files,onProgress,{preview=false}
     else if(page.kind==='grid') vectorGrid(doc,state,page.month,slug);
     if(marks) cropMarks(doc,state,slug);
   }
-  if(doc.getNumberOfPages()!==30) throw new Error('Unexpected PDF page count; download cancelled.');
+  if(doc.getNumberOfPages()!==pages.length) throw new Error('Unexpected PDF page count; download cancelled.');
   onProgress('Packaging the complete PDF…');await breathe();
-  if(preview) return {blob:doc.output('blob'),pages:30,warnings,filename:`photo-calendar-${state.year}-preview.pdf`};
+  if(preview) return {blob:doc.output('blob'),pages:pages.length,warnings,filename:`photo-calendar-${state.year}-preview.pdf`};
   const blob=doc.output('blob');
   const url=URL.createObjectURL(blob),anchor=document.createElement('a');
-  anchor.href=url;anchor.download=`photo-calendar-${state.year}-complete-30-pages.pdf`;document.body.append(anchor);
+  anchor.href=url;anchor.download=`photo-calendar-${state.year}-complete-${pages.length}-pages.pdf`;document.body.append(anchor);
   try {anchor.click();} finally {anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),URL_LIFETIME);}
   doc=null;
-  return {pages:30,mediaWidth:aw+2*slug,mediaHeight:ah+2*slug,boxes,marks,warnings};
+  return {pages:pages.length,mediaWidth:aw+2*slug,mediaHeight:ah+2*slug,boxes,marks,warnings};
   } finally { assets.endExport(); }
 }

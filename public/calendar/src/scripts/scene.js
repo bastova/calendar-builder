@@ -1,11 +1,9 @@
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.183.0/three.module.min.js';
 
-import { MONTHS, drawCalendarGrid, saddlePage, readerState, SADDLE_SHEET_COUNT, validateSaddleImposition, normalizeLayout, normalizeArtworkMetadata, DEFAULT_END_SPREAD_COLOR, END_SPREADS, CALENDAR_SELECTIONS, normalizeEndSpreadColor, calendarSelectionIndex, calendarSelectionLabel } from './layout.js';
+import { MONTHS, drawCalendarGrid, calendarPagePlan, calendarSelections, readerState, validateSaddleImposition, normalizeLayout, normalizeArtworkMetadata, DEFAULT_END_SPREAD_COLOR, END_SPREADS, normalizeEndSpreadColor, calendarSelectionIndex, calendarSelectionLabel } from './layout.js';
 import { backCoverUsesImage, assets, drawPhoto } from './media.js';
 import { drawBackCover, normalizeBackCover } from './back-cover.js';
 import { applyPaperEstimate, normalizePrintColor } from './print-color.js';
-const SHEET_COUNT = 13;
-const SADDLE_LEAF_COUNT = SADDLE_SHEET_COUNT * 2;
 const TEXTURE_WIDTH = 1024;
 const TEXTURE_PIXELS = 768 * 1024;
 const TURN_DURATION = 850;
@@ -43,7 +41,7 @@ const SADDLE_CREASE_WIDTH = 0.055;
 const SADDLE_STAPLE_WIDTH = 0.22;
 const SADDLE_STAPLE_THICKNESS = 0.025;
 const SADDLE_STAPLE_DEPTH = 0.014;
-const DEFAULT_STATE = { year: 2027, month: 0, endSpread: null, endSpreadColor: DEFAULT_END_SPREAD_COLOR, width: 12, height: 12, margin: 0.5, binding: 0.5, bleed: 0.125, week: 0, guides: true, bindingStyle: 'wire', ...PREVIEW_DEFAULTS };
+const DEFAULT_STATE = { year: 2027, month: 0, endSpread: null, endSpreadColor: DEFAULT_END_SPREAD_COLOR, width: 12, height: 12, margin: 0.5, binding: 0.5, bleed: 0.125, week: 0, guides: true, includeOpeningSpread: true, includeClosingSpread: true, bindingStyle: 'wire', ...PREVIEW_DEFAULTS };
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const ease = value => value * value * (3 - 2 * value);
 
@@ -212,6 +210,7 @@ export function createCalendarScene(container) {
 
   let state = { ...DEFAULT_STATE };
   let leaves = [];
+  let pagePlan = calendarPagePlan(state);
   let frontCover = null;
   let backCover = null;
   let saddleFolds = [];
@@ -379,13 +378,13 @@ export function createCalendarScene(container) {
   }
 
   function stackThickness() {
-    const interiors = state.bindingStyle === 'saddle' ? SADDLE_LEAF_COUNT - 2 : SHEET_COUNT;
+    const interiors = pagePlan.leafCount - 2;
     return interiors * stockThickness() + 2 * stockThickness(true) + (interiors + 1) * STACK_CLEARANCE;
   }
 
   function closedCenter(sheet) {
-    const count = state.bindingStyle === 'saddle' ? SADDLE_LEAF_COUNT : SHEET_COUNT + 2;
-    const index = state.bindingStyle === 'saddle' ? sheet.index : sheet.index + 1;
+    const count = pagePlan.leafCount;
+    const index = sheet.index;
     const total = stackThickness(), cover = stockThickness(true), paper = stockThickness();
     if (index === 0) return total / 2 - cover / 2;
     if (index === count - 1) return -total / 2 + cover / 2;
@@ -456,7 +455,7 @@ export function createCalendarScene(container) {
     backGeometry.translate(0, 0, -thickness);
     const uv = backGeometry.attributes.uv;
     for (let point = 0; point < uv.count; point++) {
-      if (cover) uv.setX(point, 1 - uv.getX(point));
+      if (backKind === 'cover' && backMonth === 'back-cover') uv.setX(point, 1 - uv.getX(point));
       else uv.setY(point, 1 - uv.getY(point));
     }
     const front = new THREE.Mesh(frontGeometry, paperMaterial(texture(frontKind, frontMonth), THREE.FrontSide, cover));
@@ -539,27 +538,36 @@ export function createCalendarScene(container) {
 
   /** Last turned leaf: reuse physical end faces without moving any month artwork. */
   function upperLeafIndex() {
-    if(state.endSpread==='opening') return state.bindingStyle==='saddle'?0:-1;
-    // Saddle p28/p29 are also solid; turn both padding leaves to reach p30/p31.
-    if(state.endSpread==='closing') return state.bindingStyle==='saddle'?SADDLE_LEAF_COUNT-2:SHEET_COUNT-1;
-    return state.month+(state.bindingStyle==='saddle'?1:0);
+    const pageIndex = pagePlan.pages.findIndex(page => state.endSpread
+      ? page.endSpread === state.endSpread
+      : page.kind === 'photo' && page.month === state.month);
+    return Math.floor(pageIndex / 2);
+  }
+
+  function pageArtwork(page) {
+    return {kind:page.kind==='photo' && !page.key.startsWith('month-') ? 'cover' : page.kind,
+      slot:page.kind==='photo' && !page.key.startsWith('month-') ? page.key : page.month ?? 0};
+  }
+
+  function plannedLeaf(index) {
+    const front=pageArtwork(pagePlan.pages[index*2]),back=pageArtwork(pagePlan.pages[index*2+1]);
+    const sheet=leaf(front.kind,front.slot,back.kind,back.slot,index,index===0||index===pagePlan.leafCount-1);
+    place(sheet,state.previewClosed ? 0 : index<=upperLeafIndex() ? -Math.PI : 0);
+    return sheet;
   }
 
   function buildSaddle() {
-    validateSaddleImposition(state.year);
-    const pageArtwork = page => ({kind:page.kind==='photo' && !page.key.startsWith('month-') ? 'cover' : page.kind,slot:page.kind==='photo' && !page.key.startsWith('month-') ? page.key : page.month ?? 0});
-    for (let index = 0; index < SADDLE_LEAF_COUNT; index++) {
-      const front = pageArtwork(saddlePage(index * 2 + 1, state.year));
-      const back = pageArtwork(saddlePage(index * 2 + 2, state.year));
-      const sheet = leaf(front.kind, front.slot, back.kind, back.slot, index, index===0 || index===SADDLE_LEAF_COUNT-1);
+    validateSaddleImposition(state.year,state);
+    for (let index = 0; index < pagePlan.leafCount; index++) {
+      const sheet = plannedLeaf(index);
       sheet.pivot.name = `Reader pages ${index*2+1}/${index*2+2}`;
       leaves.push(sheet);
       place(sheet, state.previewClosed ? 0 : index <= upperLeafIndex() ? -Math.PI : 0);
     }
-    for (let folio = 0; folio < SADDLE_SHEET_COUNT; folio++) {
+    for (let folio = 0; folio < pagePlan.physicalSheets; folio++) {
       const group = new THREE.Group();
       group.name = `Folded sheet ${folio+1} · ${folio===0?'cover stock':'interior stock'}`;
-      const last = SADDLE_LEAF_COUNT-1-folio;
+      const last = pagePlan.leafCount-1-folio;
       group.add(leaves[folio].pivot, leaves[last].pivot);
       const geometry = new THREE.PlaneGeometry(state.width, 1, 1, 16);
       const positions = geometry.attributes.position;
@@ -588,15 +596,9 @@ export function createCalendarScene(container) {
   }
 
   function rebuildWire() {
-    frontCover = leaf('cover', 'front-cover', 'solid', 0, -1, true);
-    place(frontCover, state.previewClosed ? 0 : -Math.PI);
-    backCover = leaf('solid', 0, 'cover', 'back-cover', SHEET_COUNT, true);
-    place(backCover, 0);
-    for (let index = 0; index < SHEET_COUNT; index++) {
-      const sheet = leaf(index === 0 ? 'solid' : 'grid', Math.max(0, index - 1), index === SHEET_COUNT-1 ? 'solid' : 'photo', index, index);
-      leaves.push(sheet);
-      place(sheet, state.previewClosed ? 0 : index <= upperLeafIndex() ? -Math.PI : 0);
-    }
+    frontCover = plannedLeaf(0);
+    backCover = plannedLeaf(pagePlan.leafCount-1);
+    for (let index = 1; index < pagePlan.leafCount-1; index++) leaves.push(plannedLeaf(index));
     const ringMaterial = new THREE.MeshPhysicalMaterial({ color: 0xd7dce2, metalness: 1, roughness: 0.13, clearcoat: 0.25, clearcoatRoughness: 0.09 });
     const ringCount = clamp(Math.round(state.width * 1.7), 9, 35);
     for (let index = 0; index < ringCount; index++) {
@@ -610,6 +612,7 @@ export function createCalendarScene(container) {
 
   function rebuild() {
     disposeModel();
+    pagePlan = calendarPagePlan(state);
     animation = null;
     closedPose = state.previewClosed ? 1 : 0;
     model.position.set(0, 0, 0);
@@ -682,11 +685,11 @@ export function createCalendarScene(container) {
 
   function label() {
     const bindingLabel = state.bindingStyle === 'saddle'
-      ? 'Interactive top-bound saddle calendar: full photo above the horizontal centerfold, full calendar grid below; eight nested folded sheets and two staples.'
+      ? `Interactive top-bound saddle calendar: full photo above the horizontal centerfold, full calendar grid below; ${pagePlan.physicalSheets} nested folded sheets and two staples.`
       : 'Interactive top-bound wire/coil calendar.';
     canvas.setAttribute('aria-label', state.previewClosed
-      ? `Fully closed ${state.year} calendar, ${state.width} by ${state.height} inches. ${state.bindingStyle === 'saddle' ? 'Eight nested folded folios' : 'Thirteen interior sheets and two covers'}. Front exterior photo faces forward; rotate to inspect the back exterior, spine and paper edges. Procedural studio HDR, ${state.paperGsm} gsm interior, ${state.coverGsm} gsm cover, ${state.paperFinish} finish. Drag to rotate; scroll or pinch to zoom.`
-      : state.endSpread ? `${calendarSelectionLabel(state)} spread. Both full-page halves are solid ${normalizeEndSpreadColor(state.endSpreadColor)}, with no photo or date grid. ${state.bindingStyle==='saddle'?'Eight nested folded sheets and two staples.':'Top-bound wire/coil calendar.'} Drag to rotate; scroll or pinch to zoom.`
+      ? `Fully closed ${state.year} calendar, ${state.width} by ${state.height} inches. ${state.bindingStyle === 'saddle' ? `${pagePlan.physicalSheets} nested folded folios` : `${pagePlan.interiorSheets} interior sheets and two covers`}. Front exterior photo faces forward; rotate to inspect the back exterior, spine and paper edges. Procedural studio HDR, ${state.paperGsm} gsm interior, ${state.coverGsm} gsm cover, ${state.paperFinish} finish. Drag to rotate; scroll or pinch to zoom.`
+      : state.endSpread ? `${calendarSelectionLabel(state)} spread. Both full-page halves are solid ${normalizeEndSpreadColor(state.endSpreadColor)}, with no photo or date grid. ${state.bindingStyle==='saddle'?`${pagePlan.physicalSheets} nested folded sheets and two staples.`:'Top-bound wire/coil calendar.'} Drag to rotate; scroll or pinch to zoom.`
       : `${MONTHS[state.month]} ${state.year}. ${bindingLabel} Drag to rotate through the front, edges and back; scroll or pinch to zoom.`);
   }
 
@@ -712,10 +715,12 @@ export function createCalendarScene(container) {
     next.paperFinish = Object.hasOwn(PAPER_FINISHES, next.paperFinish) ? next.paperFinish : state.paperFinish;
     next.paperRoughness = Number.isFinite(Number(next.paperRoughness)) ? clamp(Number(next.paperRoughness), 0.18, 0.98) : state.paperRoughness;
     next.month = clamp(Math.round(next.month), 0, 11);
-    next.endSpread = !next.previewClosed && END_SPREADS.includes(next.endSpread) ? next.endSpread : null;
+    next.includeOpeningSpread = next.includeOpeningSpread !== false;
+    next.includeClosingSpread = next.includeClosingSpread !== false;
+    next.endSpread = !next.previewClosed && END_SPREADS.includes(next.endSpread) && calendarSelections(next).includes(next.endSpread) ? next.endSpread : null;
     next.endSpreadColor = normalizeEndSpreadColor(next.endSpreadColor);
     const selectionChange = next.month !== state.month || next.previewClosed !== state.previewClosed || next.endSpread !== state.endSpread;
-    const structuralChange = ['width', 'height', 'margin', 'binding', 'bleed', 'year', 'week', 'guides', 'bindingStyle', 'paperGsm', 'coverGsm', 'endSpreadColor'].some(field => next[field] !== state[field]);
+    const structuralChange = ['width', 'height', 'margin', 'binding', 'bleed', 'year', 'week', 'guides', 'bindingStyle', 'paperGsm', 'coverGsm', 'endSpreadColor', 'includeOpeningSpread', 'includeClosingSpread'].some(field => next[field] !== state[field]);
     const nextHolidaySignature = JSON.stringify(next.holidays ?? null);
     const holidaysChanged = nextHolidaySignature !== holidaySignature;
     next.layout=normalizeLayout(next.layout);
@@ -742,8 +747,9 @@ export function createCalendarScene(container) {
     if (disposed) return;
     const step = direction === 'prev' || direction === 'previous' || direction === -1 ? -1 : direction === 'next' || direction === 1 ? 1 : 0;
     const index=calendarSelectionIndex(state)+step;
-    if (!step || index<0 || index>=CALENDAR_SELECTIONS.length) return;
-    const target=CALENDAR_SELECTIONS[index];
+    const selections=calendarSelections(state);
+    if (!step || index<0 || index>=selections.length) return;
+    const target=selections[index];
     update({month:typeof target==='number'?target:state.month,previewClosed:target==='cover',endSpread:END_SPREADS.includes(target)?target:null});
   }
 
