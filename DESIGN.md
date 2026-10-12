@@ -31,6 +31,7 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 - Keep menus and sections compact: roughly 8px control gaps, 10–14px panel padding, 32px inputs, and 34–36px desktop utility buttons. Keep primary view tabs and touch controls at least 44px tall.
 - Use a horizontal calendar toolbar instead of a permanent configuration sidebar. Keep year, dimensions, week start and guides immediately available; put secondary settings in an expandable group.
 - On wide screens, place the large 3D stage beside a 390–430px scrollable artwork inspector. Group secondary settings in named accordions. Keep photo framing and active editing controls directly available.
+- Keep Glossy / Satin / Matte paper finish and a roughness slider visible on the same toolbar row as the binding picker inside the 3D preview. Put paper weight and estimated thickness in a secondary accordion.
 - Preserve a large 3D stage (74vh, bounded to 540–1000px on desktop; 520px on mobile). At narrower widths, move the inspector below the stage and use side-by-side editor content when space permits.
 - Print view uses a dashboard: PDF actions and geometry on one side, paper simulation and printer fit on the other. Put duplex/assembly details in an expandable section.
 - On small screens, let controls wrap and give primary navigation enough width to remain readable and easy to tap.

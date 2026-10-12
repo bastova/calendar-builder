@@ -126,7 +126,7 @@ function renderPreviewControls() {
   byId('paper-roughness').value=state.paperRoughness;
   byId('paper-roughness-value').textContent=state.paperRoughness.toFixed(2);
   const estimate=previewSummary();
-  byId('preview-stock-note').textContent=`Estimated caliper: interior ≈ ${estimate.interiorCaliperMm.toFixed(3)} mm · cover ≈ ${estimate.coverCaliperMm.toFixed(3)} mm · closed paper stack ≈ ${estimate.closedPaperStackMm.toFixed(2)} mm. Density heuristic, not guaranteed stock thickness. Satin / gloss reveals moving softbox reflections; cover coating is stronger. Rectangular area illumination is point-sampled: the true RectAreaLight LTC addon is not available on the verified cdnjs asset list. Weight changes edge depth and gentle stylized flexibility. Visualization only: no PDF stock changes or creep compensation.${state.previewClosed?' Next opens the solid Opening spread; select a month to jump directly. Drag to inspect the back exterior.':''}`;
+  byId('preview-stock-note').textContent=`Estimated thickness: interior ${estimate.interiorCaliperMm.toFixed(3)} mm · cover ${estimate.coverCaliperMm.toFixed(3)} mm · closed stack ${estimate.closedPaperStackMm.toFixed(2)} mm. Weight, finish and roughness affect the 3D preview only; PDF unchanged.`;
 }
 const holidayPanel = createHolidayPanel(() => state, () => {render();save();});
 const layoutEditor = createLayoutEditor(() => state, (settings,endColor) => {
