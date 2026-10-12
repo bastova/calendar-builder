@@ -24,7 +24,7 @@ test('a custom holiday reserves date space throughout the year', () => {
   assert.deepEqual(sizes(calendarLayout(settings,0)),sizes(calendarLayout(settings,2)));
 });
 
-test('disabled or fully removed holidays leave the full date space available', () => {
+test('disabled or fully removed holidays preserve configured sizes', () => {
   const without = sizes(calendarLayout(state,0));
   for(const holidays of [
     {enabled:false},
@@ -32,5 +32,19 @@ test('disabled or fully removed holidays leave the full date space available', (
   ]) {
     assert.deepEqual(sizes(calendarLayout({...state,holidays},0)),without);
   }
-  assert.ok(without.date[0]>sizes(calendarLayout({...state,holidays:{enabled:true}},0)).date[0]);
+  assert.deepEqual(without,sizes(calendarLayout({...state,holidays:{enabled:true}},0)));
+});
+
+
+test('all configured point sizes survive changing height and width', () => {
+  for(const height of [4,6,12]) for(const width of [4,12]) for(let month=0;month<12;month++) {
+    const plan=calendarLayout({...state,width,height,holidays:{enabled:true}},month);
+    for(const text of plan.texts) assert.equal(text.size,plan.settings.fonts[text.role].size/72);
+    assert.deepEqual(plan.fitted,[]);
+  }
+});
+
+test('crowded text reports overflow without reducing configured type', () => {
+  const plan=calendarLayout({...state,holidays:{enabled:true}},0);
+  assert.ok(plan.notices.some(notice=>notice.includes('Configured text exceeds')));
 });

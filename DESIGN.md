@@ -28,6 +28,7 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 
 ## Typography and layout
 
+- Calendar artwork font sizes stay at their configured point sizes when page dimensions change, including holiday labels. Never automatically shrink typography to fit; report overflow so users can adjust their layout.
 - Calendar artwork offers a curated Google Fonts selection, self-hosted with licenses and embedded in PDF exports. Keep the interface font unchanged. Offer only styles supplied by each family.
 - Use the existing Arial / Helvetica sans-serif stack, modest headings, compact labels, and strong action labels.
 - Keep menus and sections compact: roughly 8px control gaps, 10–14px panel padding, 32px inputs, and 34–36px desktop utility buttons. Keep primary view tabs and touch controls at least 44px tall.

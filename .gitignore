@@ -5,6 +5,7 @@
 /build/
 /dist/
 /coverage/
+/public/calendar/src/scripts-*/
 *.tsbuildinfo
 next-env.d.ts
 

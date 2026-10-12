@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 
 const SCRIPT_SOURCES = [
-  ['/calendar/browser-files.js', false],
+  [`/calendar/browser-files.js?v=${process.env.NEXT_PUBLIC_CALENDAR_VERSION || 'dev'}`, false],
   ['https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.2.1/jspdf.umd.min.js', false],
   ['https://cdn.jsdelivr.net/npm/pica@10.0.3/dist/pica.min.js', false],
-  ['/calendar/src/scripts/main.js', true]
+  [process.env.NEXT_PUBLIC_CALENDAR_MAIN || '/calendar/src/scripts/main.js', true]
 ];
 
 /** Load each dependency before starting the DOM-based studio. */

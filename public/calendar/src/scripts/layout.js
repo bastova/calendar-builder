@@ -1,5 +1,5 @@
 import { FONT_CATALOG } from './fonts.js';
-import { holidayList, holidaysForDate, holidayTextColor, wrapHolidayText } from './holidays.js';
+import { holidaysForDate, holidayTextColor, wrapHolidayText } from './holidays.js';
 const POINTS_PER_INCH = 72;
 const TEXT_HEIGHT = 1.3;
 const TEXT_ASCENT = 0.98;
@@ -179,27 +179,20 @@ export function gridLayout(state) {
 }
 /** Build renderer-neutral rectangles, grid lines and alphabetic-baseline text in printer inches. */
 export function calendarLayout(state,month) {
-  const g=gridLayout(state),s=g.settings,rects=[],lines=[],texts=[],notices=new Set(g.notices),fitted=new Set();
-  const fitSize=(label,font,width,height)=>{
-    const m=textMetrics(label,font),requested=font.size/POINTS_PER_INCH;
-    const size=Math.max(0,Math.min(requested,width/(m.advance+m.left+m.right),height/m.height));
-    if(size<requested*0.999) fitted.add(font.role);
-    return size;
-  };
+  const g=gridLayout(state),s=g.settings,rects=[],lines=[],texts=[],notices=new Set(g.notices);
   const addText=(label,font,box,size,vertical='top')=>{
     const m=textMetrics(label,font),boxWidth=(m.advance+m.left+m.right)*size,boxHeight=m.height*size;
+    if(boxWidth>box.width+0.001 || boxHeight>box.height+0.001) notices.add('Configured text exceeds its available space. Increase page size or adjust typography and spacing.');
     const x=box.x+(font.align==='right'?box.width-boxWidth:font.align==='center'?(box.width-boxWidth)/2:0)+m.left*size;
     const top=box.y+(vertical==='bottom'?box.height-boxHeight:vertical==='middle'?(box.height-boxHeight)/2:0);
     texts.push({text:String(label),x,y:top+m.ascent*size,size,font,color:font.color,role:font.role});
   };
   const fonts=Object.fromEntries(LAYOUT_ROLES.map(role=>[role,{...s.fonts[role],role}]));
   const titleBox={x:g.left,y:g.top,width:g.usable*0.68,height:g.heading},yearBox={x:g.left+g.usable*0.72,y:g.top,width:g.usable*0.28,height:g.heading};
-  // Fit all month names, so flipping months does not change the title size.
-  const titleSize=Math.min(...MONTHS.map(name=>fitSize(name,fonts.title,titleBox.width,titleBox.height)));
-  addText(MONTHS[month],fonts.title,titleBox,titleSize,'middle');
-  addText(state.year,fonts.year,yearBox,fitSize(String(state.year),fonts.year,yearBox.width,yearBox.height),'middle');
+  addText(MONTHS[month],fonts.title,titleBox,fonts.title.size/POINTS_PER_INCH,'middle');
+  addText(state.year,fonts.year,yearBox,fonts.year.size/POINTS_PER_INCH,'middle');
   const weekdayBoxWidth=g.cellWidth-2*g.paddingX;
-  const weekdaySize=Math.min(...WEEKDAYS.map(name=>fitSize(name,fonts.weekday,weekdayBoxWidth,g.weekdayHeight)));
+  const weekdaySize=fonts.weekday.size/POINTS_PER_INCH;
   const weekendFont=(font,weekday)=>({...font,color:s.weekendColors&&weekday===0?s.sundayColor:s.weekendColors&&weekday===6?s.saturdayColor:font.color});
   for(let column=0;column<7;column++) {
     const weekday=(column+state.week)%7;
@@ -209,12 +202,7 @@ export function calendarLayout(state,month) {
   for(let row=0;row<=6;row++) lines.push({x1:g.left,y1:g.gridTop+row*g.rowHeight,x2:g.left+g.usable,y2:g.gridTop+row*g.rowHeight});
   for(let column=0;column<=7;column++) lines.push({x1:g.left+column*g.cellWidth,y1:g.gridTop,x2:g.left+column*g.cellWidth,y2:g.gridTop+6*g.rowHeight});
   const dates=monthDates(state.year,month,state.week),innerWidth=g.cellWidth-2*g.paddingX,innerHeight=g.rowHeight-2*g.paddingY;
-  // Typography is shared by the whole calendar. Reserve holiday space in every
-  // month when any enabled holiday exists, so short pages do not change date
-  // sizes as the reader moves between months with and without holidays.
-  const hasHolidays=state.holidays?.enabled && holidayList(state).length>0;
-  const dayZone=hasHolidays?innerHeight*0.35:innerHeight;
-  const daySize=Math.min(...Array.from({length:31},(_,index)=>fitSize(String(index+1),fonts.date,innerWidth,dayZone)));
+  const daySize=fonts.date.size/POINTS_PER_INCH;
   for(let day=1;day<=dates.count;day++) {
     const cell=dates.first+day-1,column=cell%7,x=g.left+column*g.cellWidth,y=g.gridTop+Math.floor(cell/7)*g.rowHeight;
     const holidays=holidaysForDate(state,month,day),weekday=(column+state.week)%7;
@@ -222,32 +210,26 @@ export function calendarLayout(state,month) {
     if(holidays.length) rects.push({x:x+g.lineWidth/2,y:y+g.lineWidth/2,width:g.cellWidth-g.lineWidth,height:g.rowHeight-g.lineWidth,color:color(state.holidays?.color,'#f3dba5')});
     const dayHeight=textMetrics(String(day),fonts.date).height*daySize;
     if(!holidays.length) {addText(day,weekendFont(fonts.date,weekday),inner,daySize,s.dateVertical);continue;}
-    const gap=Math.min(s.holidayGap,innerHeight*0.1),labelHeight=innerHeight-dayHeight-gap;
+    const gap=Math.min(s.holidayGap,innerHeight*0.1);
     if(gap<s.holidayGap) notices.add('Holiday spacing was reduced to keep date numbers and labels separate.');
     const source=holidays.map(item=>item.name).join(' · '),label=printableLabel(source);
     if(label!==source) notices.add('Some holiday punctuation or characters were substituted for the built-in PDF fonts. Stored holiday names are unchanged.');
     const foreground=s.holidayContrast?holidayTextColor(color(state.holidays?.color,'#f3dba5')):null;
     const holidayFont={...fonts.holiday,color:foreground??fonts.holiday.color};
     const holidayLineHeight=Math.max(HOLIDAY_LINE_HEIGHT,...Array.from(label,character=>textMetrics(character,holidayFont).height));
-    let size=Math.min(holidayFont.size/POINTS_PER_INCH,labelHeight/(s.holidayLines*holidayLineHeight));
-    const widestCharacter=Math.max(...Array.from(label,character=>{const m=textMetrics(character,holidayFont);return m.advance+m.left+m.right;}),1);
-    size=Math.min(size,innerWidth/widestCharacter);
+    const size=holidayFont.size/POINTS_PER_INCH;
     const measure=value=>{const m=textMetrics(printableLabel(value),holidayFont);return (m.advance+m.left+m.right)*size;};
     const rawWrapped=wrapHolidayText(label,measure,innerWidth,s.holidayLines),wrapped=rawWrapped.map(printableLabel);
-    // Three-dot ellipses may be wider than the wrapper's single glyph. Refit every final line.
-    size=Math.min(size,...wrapped.map(line=>fitSize(line,{...holidayFont,size:size*POINTS_PER_INCH},innerWidth,labelHeight/s.holidayLines)));
-    if(size<holidayFont.size/POINTS_PER_INCH*0.999) fitted.add('holiday');
     if(rawWrapped.some(line=>line.endsWith('…'))) notices.add('Long holiday labels are wrapped and shortened to the selected line limit; full names remain in the holiday list.');
     const labelBlockHeight=wrapped.length*size*holidayLineHeight,totalHeight=dayHeight+gap+labelBlockHeight;
+    if(totalHeight>innerHeight+0.001) notices.add('Configured text exceeds its available space. Increase page size or adjust typography and spacing.');
     const blockTop=inner.y+(s.dateVertical==='bottom'?innerHeight-totalHeight:s.dateVertical==='middle'?(innerHeight-totalHeight)/2:0);
     const dayTop=s.dateVertical==='bottom'?blockTop+labelBlockHeight+gap:blockTop;
     const labelTop=s.dateVertical==='bottom'?blockTop:blockTop+dayHeight+gap;
     addText(day,{...weekendFont(fonts.date,weekday),color:foreground??weekendFont(fonts.date,weekday).color},{...inner,y:dayTop,height:dayHeight},daySize);
     wrapped.forEach((line,index)=>addText(line,holidayFont,{...inner,y:labelTop+index*size*holidayLineHeight,height:size*holidayLineHeight},size));
   }
-  if(fitted.size) notices.add(`Automatically fitted font sizes: ${[...fitted].join(', ')}. Requested sizes are kept; enlarge the page or reduce spacing to make text larger.`);
-  if(texts.some(item=>item.size*POINTS_PER_INCH<6)) notices.add('Some fitted text is below 6 pt and may be hard to read in print. Enlarge the page or reduce margins, padding or spacing.');
-  return {geometry:g,settings:s,rects,lines,texts,notices:[...notices],fitted:[...fitted]};
+  return {geometry:g,settings:s,rects,lines,texts,notices:[...notices],fitted:[]};
 }
 /** Draw the identical shared layout used by the vector PDF and flat preview. */
 export function drawCalendarGrid(context,state,month,width,height) {
