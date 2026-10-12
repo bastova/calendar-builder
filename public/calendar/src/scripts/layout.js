@@ -1,5 +1,5 @@
 import { FONT_CATALOG } from './fonts.js';
-import { holidaysForDate, holidayTextColor, wrapHolidayText } from './holidays.js';
+import { holidayList, holidaysForDate, holidayTextColor, wrapHolidayText } from './holidays.js';
 const POINTS_PER_INCH = 72;
 const TEXT_HEIGHT = 1.3;
 const TEXT_ASCENT = 0.98;
@@ -209,7 +209,10 @@ export function calendarLayout(state,month) {
   for(let row=0;row<=6;row++) lines.push({x1:g.left,y1:g.gridTop+row*g.rowHeight,x2:g.left+g.usable,y2:g.gridTop+row*g.rowHeight});
   for(let column=0;column<=7;column++) lines.push({x1:g.left+column*g.cellWidth,y1:g.gridTop,x2:g.left+column*g.cellWidth,y2:g.gridTop+6*g.rowHeight});
   const dates=monthDates(state.year,month,state.week),innerWidth=g.cellWidth-2*g.paddingX,innerHeight=g.rowHeight-2*g.paddingY;
-  const hasHolidays=Array.from({length:dates.count},(_,index)=>holidaysForDate(state,month,index+1).length>0).some(Boolean);
+  // Typography is shared by the whole calendar. Reserve holiday space in every
+  // month when any enabled holiday exists, so short pages do not change date
+  // sizes as the reader moves between months with and without holidays.
+  const hasHolidays=state.holidays?.enabled && holidayList(state).length>0;
   const dayZone=hasHolidays?innerHeight*0.35:innerHeight;
   const daySize=Math.min(...Array.from({length:31},(_,index)=>fitSize(String(index+1),fonts.date,innerWidth,dayZone)));
   for(let day=1;day<=dates.count;day++) {
