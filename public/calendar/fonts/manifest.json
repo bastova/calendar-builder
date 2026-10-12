@@ -1,0 +1,89 @@
+{
+  "lato": {
+    "label": "Lato",
+    "files": {
+      "normal": "Lato-Regular.ttf",
+      "bold": "Lato-Bold.ttf",
+      "italic": "Lato-Italic.ttf",
+      "bolditalic": "Lato-BoldItalic.ttf"
+    }
+  },
+  "ptsans": {
+    "label": "PT Sans",
+    "files": {
+      "normal": "PT_Sans-Web-Regular.ttf",
+      "bold": "PT_Sans-Web-Bold.ttf",
+      "italic": "PT_Sans-Web-Italic.ttf",
+      "bolditalic": "PT_Sans-Web-BoldItalic.ttf"
+    }
+  },
+  "ptserif": {
+    "label": "PT Serif",
+    "files": {
+      "normal": "PT_Serif-Web-Regular.ttf",
+      "bold": "PT_Serif-Web-Bold.ttf",
+      "italic": "PT_Serif-Web-Italic.ttf",
+      "bolditalic": "PT_Serif-Web-BoldItalic.ttf"
+    }
+  },
+  "crimsontext": {
+    "label": "Crimson Text",
+    "files": {
+      "normal": "CrimsonText-Regular.ttf",
+      "bold": "CrimsonText-Bold.ttf",
+      "italic": "CrimsonText-Italic.ttf",
+      "bolditalic": "CrimsonText-BoldItalic.ttf"
+    }
+  },
+  "arvo": {
+    "label": "Arvo",
+    "files": {
+      "normal": "Arvo-Regular.ttf",
+      "bold": "Arvo-Bold.ttf",
+      "italic": "Arvo-Italic.ttf",
+      "bolditalic": "Arvo-BoldItalic.ttf"
+    }
+  },
+  "spectral": {
+    "label": "Spectral",
+    "files": {
+      "normal": "Spectral-Regular.ttf",
+      "bold": "Spectral-Bold.ttf",
+      "italic": "Spectral-Italic.ttf",
+      "bolditalic": "Spectral-BoldItalic.ttf"
+    }
+  },
+  "cousine": {
+    "label": "Cousine",
+    "files": {
+      "normal": "Cousine-Regular.ttf",
+      "bold": "Cousine-Bold.ttf",
+      "italic": "Cousine-Italic.ttf",
+      "bolditalic": "Cousine-BoldItalic.ttf"
+    }
+  },
+  "abrilfatface": {
+    "label": "Abril Fatface",
+    "files": {
+      "normal": "AbrilFatface-Regular.ttf"
+    }
+  },
+  "bebasneue": {
+    "label": "Bebas Neue",
+    "files": {
+      "normal": "BebasNeue-Regular.ttf"
+    }
+  },
+  "anton": {
+    "label": "Anton",
+    "files": {
+      "normal": "Anton-Regular.ttf"
+    }
+  },
+  "abel": {
+    "label": "Abel",
+    "files": {
+      "normal": "Abel-Regular.ttf"
+    }
+  }
+}
