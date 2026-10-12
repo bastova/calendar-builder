@@ -28,11 +28,11 @@ test('structured data describes the actual application without fabricated rating
 
 test('GitHub Pages URLs retain the repository prefix',()=>{
   const before=process.env.NEXT_PUBLIC_BASE_PATH;
-  process.env.NEXT_PUBLIC_BASE_PATH='/calendar-builder-slop';
+  process.env.NEXT_PUBLIC_BASE_PATH='/calendar-builder';
   try {
     const metadata=siteMetadata(publicSiteUrl('https://bastova.github.io'));
-    assert.equal(metadata.alternates.canonical,'https://bastova.github.io/calendar-builder-slop/');
-    assert.equal(metadata.openGraph.images[0].url,'https://bastova.github.io/calendar-builder-slop/share-image.png');
+    assert.equal(metadata.alternates.canonical,'https://bastova.github.io/calendar-builder/');
+    assert.equal(metadata.openGraph.images[0].url,'https://bastova.github.io/calendar-builder/share-image.png');
     assert.equal(structuredData(publicSiteUrl('https://bastova.github.io'))[0].url,metadata.alternates.canonical);
   } finally {if(before===undefined)delete process.env.NEXT_PUBLIC_BASE_PATH;else process.env.NEXT_PUBLIC_BASE_PATH=before;}
 });
