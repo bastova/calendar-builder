@@ -13,8 +13,6 @@ const TURN_BEND_RATIO = 0.025;
 const STACK_CLEARANCE = 0.0007;
 const PAPER_DENSITY_KG_M3 = 700;
 const MILLIMETERS_PER_INCH = 25.4;
-const HDR_WIDTH = 1024;
-const HDR_HEIGHT = 512;
 const DEFAULT_AZIMUTH = 0.38;
 const DEFAULT_ELEVATION = 0.12;
 const STUDIO_EXPOSURE = 0.72;
@@ -23,8 +21,6 @@ const STUDIO_KEY_INTENSITY = 0.85;
 const STUDIO_RIM_INTENSITY = 2.4;
 const STUDIO_REAR_FILL_INTENSITY = 0.35;
 const STUDIO_FOCUS_INTENSITY = 0.70;
-const AREA_COLUMNS = 4;
-const AREA_ROWS = 2;
 const SHADOW_SIZE = 1024;
 const SHADOW_BLUR_RADIUS = 40;
 const SHADOW_BLUR_SAMPLES = 32;
@@ -32,8 +28,6 @@ const SHADOW_OPACITY = 0.10;
 const SHADOW_GROUND_GAP = 0.45;
 const PAPER_GRAIN_SIZE = 128;
 const PAPER_GRAIN_REPEAT = 6;
-const PAGE_SEGMENTS_X = 12;
-const PAGE_SEGMENTS_Y = 48;
 const STUDIO_SPAN_MINIMUM = 12;
 export const PAPER_WEIGHTS = Object.freeze([120, 170, 250, 350]);
 export const PAPER_FINISHES = Object.freeze({
@@ -55,6 +49,15 @@ const ease = value => value * value * (3 - 2 * value);
 
 /** Create an independently disposable, fully orbitable physical calendar preview. */
 export function createCalendarScene(container) {
+  // Choose once to avoid rebuilding GPU resources as browser chrome resizes.
+  const mobile = window.matchMedia('(max-width: 720px)').matches
+    || window.matchMedia('(pointer: coarse)').matches;
+  const AREA_COLUMNS = mobile ? 1 : 4;
+  const AREA_ROWS = mobile ? 1 : 2;
+  const HDR_WIDTH = mobile ? 512 : 1024;
+  const HDR_HEIGHT = HDR_WIDTH / 2;
+  const PAGE_SEGMENTS_X = mobile ? 6 : 12;
+  const PAGE_SEGMENTS_Y = mobile ? 24 : 48;
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -70,7 +73,7 @@ export function createCalendarScene(container) {
   canvas.setAttribute('aria-label', 'Interactive 3D calendar. Drag to rotate, including the back; scroll or pinch to zoom.');
   canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;cursor:grab;';
   container.append(canvas);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2));
   renderer.setClearColor(0xf4f5f6, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -86,9 +89,9 @@ export function createCalendarScene(container) {
   const keyDirection = new THREE.Vector3(-24, 34, 42).normalize();
   key.position.copy(keyDirection);
   key.castShadow = true;
-  key.shadow.mapSize.set(SHADOW_SIZE, SHADOW_SIZE);
+  key.shadow.mapSize.set(mobile ? 512 : SHADOW_SIZE, mobile ? 512 : SHADOW_SIZE);
   key.shadow.radius = SHADOW_BLUR_RADIUS;
-  key.shadow.blurSamples = SHADOW_BLUR_SAMPLES;
+  key.shadow.blurSamples = mobile ? 8 : SHADOW_BLUR_SAMPLES;
   key.shadow.bias = -0.000025;
   key.shadow.normalBias = 0.001;
   key.shadow.camera.near = 0.5;
@@ -334,7 +337,7 @@ export function createCalendarScene(container) {
   function canvasTexture(surface) {
     const map = new THREE.CanvasTexture(surface);
     map.colorSpace = THREE.SRGBColorSpace;
-    map.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+    map.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), mobile ? 2 : 8);
     return map;
   }
 
@@ -468,6 +471,11 @@ export function createCalendarScene(container) {
   }
 
   function place(sheet, angle) {
+    // Resting leaves keep the same bend during a month turn. A cover/open
+    // transition changes closedPose, so it still updates every affected leaf.
+    if (sheet.placedAngle === angle && sheet.placedPose === closedPose) return;
+    sheet.placedAngle = angle;
+    sheet.placedPose = closedPose;
     sheet.angle = angle;
     sheet.pivot.rotation.x = angle;
     const progress = clamp(-angle / Math.PI, 0, 1);
@@ -592,7 +600,7 @@ export function createCalendarScene(container) {
     const ringMaterial = new THREE.MeshPhysicalMaterial({ color: 0xd7dce2, metalness: 1, roughness: 0.13, clearcoat: 0.25, clearcoatRoughness: 0.09 });
     const ringCount = clamp(Math.round(state.width * 1.7), 9, 35);
     for (let index = 0; index < ringCount; index++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.max(0.19, stackThickness() / 2 + 0.08), 0.041, 16, 48), ringMaterial);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(Math.max(0.19, stackThickness() / 2 + 0.08), 0.041, mobile ? 8 : 16, mobile ? 24 : 48), ringMaterial);
       ring.rotation.y = Math.PI / 2;
       ring.position.set(-state.width / 2 + 0.3 + index * (state.width - 0.6) / (ringCount - 1), 0, 0);
       ring.castShadow = true;
@@ -776,6 +784,7 @@ export function createCalendarScene(container) {
   function tick(time) {
     if (disposed) return;
     frame = requestAnimationFrame(tick);
+    if (document.hidden || !container.clientWidth || !container.clientHeight) return;
     if (animation) {
       const current = animation;
       const progress = clamp((time - current.start) / TURN_DURATION, 0, 1);
