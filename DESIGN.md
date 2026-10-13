@@ -71,3 +71,7 @@ Read this file first. Reuse these tokens and patterns, check both themes and res
 - Group footer links under Explore, Support, and Privacy & usage. Include the linked brand, a short description, copyright, Terms of Use, Contact, and Back to top. Keep the expanded footer in mobile Info.
 
 - Omit the photo-processing badge, Report an issue, GitHub project, and Browser storage links from the footer.
+
+- Keep the desktop footer height constant independently of editor accordions: 272px above 900px, 400px at 721–900px. Allow overflow for enlarged text; mobile Info uses content height for its stacked links.
+
+- Above 720px, reserve a stable artwork inspector height (the bounded 3D stage height plus 140px). Expanded editor accordions scroll inside the inspector and must not move the footer, including the stacked layout at narrower desktop widths.
