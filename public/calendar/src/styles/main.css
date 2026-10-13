@@ -495,12 +495,10 @@ main,.printing-mode main{display:block;max-width:none}
 
 .contact-form-wrap{max-width:620px;margin-top:28px}.contact-form label{margin:20px 0 6px;font-size:14px;font-weight:600}.contact-form label span{float:none;font-size:13px;font-weight:400;color:var(--muted)}.contact-form input,.contact-form textarea{display:block;width:100%;min-height:44px;margin:0;padding:10px 12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);color:var(--text);font:inherit;font-size:16px;line-height:1.5}.contact-form textarea{resize:vertical;min-height:160px}.contact-form input[type=hidden]{display:none}.contact-form input:focus-visible,.contact-form textarea:focus-visible,.contact-form-wrap button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.contact-form input[aria-invalid=true],.contact-form textarea[aria-invalid=true]{border-color:var(--text)}.info-content .contact-help{font-size:13px;line-height:1.6;color:var(--muted);margin:8px 0 16px}.contact-form-wrap button{min-height:44px;padding:10px 22px;background:var(--accent);color:var(--accent-text);border:0;border-radius:999px;font-size:14px;font-weight:700}.contact-form-wrap button:hover{background:var(--accent-hover)}.contact-form-wrap button:disabled{opacity:.6;cursor:wait}.contact-form [id$=-error],.contact-error{font-size:14px;line-height:1.6}.contact-error:not(:empty){border-left:3px solid var(--accent);padding:8px 12px;margin:16px 0}.contact-success{padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--surface-soft)}
 
-/* Reserve footer space independently of editor accordion content. */
+/* Keep the footer at its natural content height. */
 .site-footer{width:100%;flex:none;align-self:start}
-@media(min-width:901px){.site-footer{height:272px;overflow:auto}}
-@media(min-width:721px) and (max-width:900px){.site-footer{height:400px;overflow:auto}}
 
 /* Accordion content scrolls inside the inspector, never expands the page. */
 @media(min-width:721px){
- #artwork-tabs{height:calc(clamp(540px,74vh,1000px) + 140px);max-height:calc(clamp(540px,74vh,1000px) + 140px);min-height:0;overflow-y:auto;overscroll-behavior-y:contain}
+ #artwork-tabs{position:relative;contain:layout paint;height:calc(clamp(540px,74vh,1000px) + 140px);max-height:calc(clamp(540px,74vh,1000px) + 140px);min-height:0;overflow-y:auto;overscroll-behavior-y:contain}
 }

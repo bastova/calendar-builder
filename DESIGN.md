@@ -72,6 +72,8 @@ Read this file first. Reuse these tokens and patterns, check both themes and res
 
 - Omit the photo-processing badge, Report an issue, GitHub project, and Browser storage links from the footer.
 
-- Keep the desktop footer height constant independently of editor accordions: 272px above 900px, 400px at 721–900px. Allow overflow for enlarged text; mobile Info uses content height for its stacked links.
+- Size the footer to its content with normal padding, without fixed heights or empty reserved space. Keep editor accordion growth contained in the inspector rather than adding space to the footer.
 
 - Above 720px, reserve a stable artwork inspector height (the bounded 3D stage height plus 140px). Expanded editor accordions scroll inside the inspector and must not move the footer, including the stacked layout at narrower desktop widths.
+
+- The desktop inspector must establish a positioning and layout/paint containment boundary so positioned descendants cannot extend the document’s scrollable area below the footer.
