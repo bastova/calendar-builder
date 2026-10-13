@@ -33,3 +33,7 @@ Create a Google Analytics 4 property and a Web data stream for your GitHub Pages
 Open the deployed site and check the property's **Realtime** report to verify visits arrive. Analytics loads after the interface becomes interactive and uses Google's automatic page-view tracking. No custom photo, calendar, or editor data is sent by this integration. Without a valid ID, no Analytics scripts load.
 
 For a local production build, set `GOOGLE_ANALYTICS_ID` in `.env.local` before building; leave it unset during development to avoid recording test visits. The measurement ID is public configuration, not a secret.
+
+### Contact form
+
+The Contact page uses `@formspree/react` with form ID `mkjovaer`. Submissions go directly to `https://formspree.io/f/mkjovaer`, so this works with static hosting and requires no server route or email secret. Manage the recipient email, domain restrictions, spam protection, and notification settings in the Formspree dashboard. The form also has a native POST action for use without JavaScript.

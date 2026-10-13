@@ -37,7 +37,7 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 - Keep Glossy / Satin / Matte paper finish and a roughness slider visible in the 3D preview toolbar. Binding belongs in Calendar settings beside Week begins, including mobile Setup. Put Paper weight & thickness beside Paper finish in the preview controls on desktop and mobile.
 - Preserve a large 3D stage (74vh, bounded to 540–1000px on desktop). On phones use a viewport-relative stage (44svh, 280–540px) so controls and navigation remain reachable.
 - Print view uses a dashboard: PDF actions and geometry on one side, paper simulation and printer fit on the other. Put duplex/assembly details in an expandable section.
-- On phones (up to 720px), use focused Preview, Edit and Print screens with fixed bottom navigation ordered Preview, Setup, Edit, Print and a separate native Setup dialog. Show one task at a time; avoid stacking the entire desktop workspace. Reuse the same controls and state when resizing.
+- On phones (up to 720px), use focused Preview, Edit and Print screens with fixed bottom navigation ordered Preview, Setup, Edit, Print, Info and a separate native Setup dialog. Show one task at a time; avoid stacking the entire desktop workspace. Reuse the same controls and state when resizing.
 - Use at least 44px mobile touch controls, 16px form text, readable 12–14px labels, safe-area padding and a horizontally scrollable month strip. Keep finish and roughness visible in the preview toolbar; allow two organized rows on phones. Avoid page-wide horizontal scrolling at 320px.
 
 - Font-style controls are small borderless text buttons. Render R normally, B in bold, I in italic, and BI in bold italic; retain accessible style names, tooltips, and a clear selected state.
@@ -62,3 +62,12 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 ## Before changing the UI
 
 Read this file first. Reuse these tokens and patterns, check both themes and responsive states, and keep visual choices consistent with the user's latest instructions.
+
+## Information pages
+
+- Show Privacy Policy, Contact, About, and FAQ links in a quiet desktop footer. On phones, show this footer in a dedicated Info screen selected from the five-item bottom navigation.
+- Information pages use a readable single column, shared theme colors, orange keyboard focus, and a clear link back to the calendar.
+
+- Group footer links under Explore, Support, and Privacy & usage. Include the linked brand, a short description, copyright, Terms of Use, Contact, and Back to top. Keep the expanded footer in mobile Info.
+
+- Omit the photo-processing badge, Report an issue, GitHub project, and Browser storage links from the footer.

@@ -3,6 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@12.9.1",
-  "scripts": { "dev": "next dev", "build": "next build", "start": "next start", "tunnel": "ngrok http 3000", "test": "node --test tests/*.test.mjs" },
-  "dependencies": { "next": "^16.2.0", "react": "^19.2.1", "react-dom": "^19.2.1" }
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "tunnel": "ngrok http 3000",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@formspree/react": "^3.0.0",
+    "next": "^16.2.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1"
+  }
 }

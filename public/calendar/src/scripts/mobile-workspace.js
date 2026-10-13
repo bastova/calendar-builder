@@ -9,13 +9,13 @@ export function createMobileWorkspace(getState, navigate) {
   const slots = [toolbar].map(node => {const marker=document.createComment('desktop settings location');node.before(marker);return {node,marker};});
   const strip=document.getElementById('month-strip'),stripMarker=document.createComment('desktop month location');strip.before(stripMarker);
   let screen = getState().view === 'printing' ? 'print' : readPreference('mobile-screen','preview');
-  if(!['preview','edit','print'].includes(screen))screen='preview';
+  if(!['preview','edit','print','info'].includes(screen))screen='preview';
   let selection='';
   const saddleOption=document.querySelector('#binding-style option[value=saddle]');
   const saddleLabel=saddleOption.textContent;
   const buttons = [...nav.querySelectorAll('[data-mobile-screen]')];
   function sync() {
-    if (getState().view === 'printing') screen = 'print';
+    if (getState().view === 'printing' && screen !== 'info') screen = 'print';
     else if (screen === 'print') screen = 'preview';
     document.body.dataset.mobileScreen = screen;
     if(media.matches){
@@ -42,7 +42,7 @@ export function createMobileWorkspace(getState, navigate) {
     navigate(next === 'print' ? 'printing' : 'spread');
     sync();
     window.scrollTo({top:0,behavior:'instant'});
-    const target=next==='edit'?document.querySelector('#artwork-tabs [role=tab][aria-selected=true]'):document.getElementById('preview-title');
+    const target=next==='info'?document.getElementById('site-info-title'):next==='edit'?document.querySelector('#artwork-tabs [role=tab][aria-selected=true]'):document.getElementById('preview-title');
     target?.focus({preventScroll:true});
   }));
   document.getElementById('mobile-settings-open').addEventListener('click',()=>dialog.showModal());
