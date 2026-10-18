@@ -62,13 +62,21 @@ export function holidayTextColor(color) {
 }
 /** Wrap and ellipsize holiday labels within their date cell. */
 export function wrapHolidayText(text,measure,maxWidth,maxLines=MAX_LINES) {
-  const lines=[]; let line='';
-  for(const character of text) {
-    if(line && measure(line+character)>maxWidth) {lines.push(line.trim());line='';}
-    line+=character;
+  const lines=[];let line='';
+  // Keep words (and parenthetical suffixes such as “(observed)”) intact.
+  for(const word of String(text).trim().split(/\s+/u).filter(Boolean)) {
+    const candidate=line?`${line} ${word}`:word;
+    if(line&&measure(candidate)>maxWidth) {lines.push(line);line=word;}
+    else line=candidate;
   }
-  if(line) lines.push(line.trim());
-  if(lines.length>maxLines) {lines.length=maxLines;let last=lines[maxLines-1];while(last && measure(last+'…')>maxWidth) last=last.slice(0,-1);lines[maxLines-1]=last+'…';}
+  if(line) lines.push(line);
+  const limit=Math.max(1,Math.floor(maxLines)||MAX_LINES);
+  if(lines.length>limit) {
+    lines.length=limit;
+    const words=lines[limit-1].split(' ');
+    while(words.length&&measure(words.join(' ')+'…')>maxWidth)words.pop();
+    lines[limit-1]=words.join(' ')+'…';
+  }
   return lines;
 }
 /** Initialize accessible configuration controls and apply edits through the existing save cycle. */

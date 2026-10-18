@@ -1,9 +1,12 @@
+import { drawFillerPage } from './filler-pages.js';
+import { paintLayoutBackground } from './layout-background.js';
 import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.183.0/three.module.min.js';
 
-import { MONTHS, drawCalendarGrid, calendarPagePlan, calendarSelections, readerState, validateSaddleImposition, normalizeLayout, normalizeArtworkMetadata, DEFAULT_END_SPREAD_COLOR, END_SPREADS, normalizeEndSpreadColor, calendarSelectionIndex, calendarSelectionLabel } from './layout.js';
+import { MONTHS, drawCalendarGrid, calendarPagePlan, calendarSelections, readerState, validateSaddleImposition, normalizeLayout, normalizeArtworkMetadata, DEFAULT_END_SPREAD_COLOR, END_SPREADS, normalizeEndSpreadColor, fillerAppearance, FILLER_KEYS, calendarSelectionIndex, calendarSelectionLabel } from './layout.js';
 import { backCoverUsesImage, assets, drawPhoto } from './media.js';
 import { drawBackCover, normalizeBackCover } from './back-cover.js';
 import { applyPaperEstimate, normalizePrintColor } from './print-color.js';
+import { profileRevision } from './icc-proof.js';
 const TEXTURE_WIDTH = 1024;
 const TEXTURE_PIXELS = 768 * 1024;
 const TURN_DURATION = 850;
@@ -68,7 +71,7 @@ export function createCalendarScene(container) {
   }
   const canvas = renderer.domElement;
   canvas.setAttribute('role', 'img');
-  canvas.setAttribute('aria-label', 'Interactive 3D calendar. Drag to rotate, including the back; scroll or pinch to zoom.');
+  canvas.setAttribute('aria-label', 'Interactive 3D calendar. Drag to rotate, hold Shift and drag to pan on desktop, including the back; scroll or pinch to zoom.');
   canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none;cursor:grab;';
   container.append(canvas);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobile ? 1.5 : 2));
@@ -221,9 +224,10 @@ export function createCalendarScene(container) {
   let colorSignature = '';
   let holidaySignature = '';
   let layoutSignature = '';
+  let monthlyArtworkSignature='';
   let backArtworkSignature = '';
   const currentBackArtworkSignature = () => JSON.stringify([state.backCover,state.artworkMetadata]);
-  const currentColorSignature = () => { const color = normalizePrintColor(state.printColor); return color.preview3d ? JSON.stringify([color.paper, color.assumptions[color.paper]]) : 'original'; };
+  const currentColorSignature = () => { const color = normalizePrintColor(state.printColor); return color.preview3d ? JSON.stringify([color.mode, color.target, color.paper, color.assumptions[color.paper], profileRevision()]) : 'original'; };
   let animation = null;
   let disposed = false;
   let frame = 0;
@@ -231,6 +235,7 @@ export function createCalendarScene(container) {
   let elevation = DEFAULT_ELEVATION;
   let distance = 43;
   let zoomFactor = 1;
+  const panOffset = new THREE.Vector3();
   let initialized = false;
   let renderDirty = true;
   let lastCameraSignature = '';
@@ -317,7 +322,7 @@ export function createCalendarScene(container) {
     const context = surface.getContext('2d'), record = key==='back-cover'&&!backCoverUsesImage(state)?null:assets.get(key);
     if (key==='back-cover'&&!record) drawBackCover(context,state,surface.width,surface.height,true);
     else if (record?.bitmap) {
-      drawPhoto(context, record.bitmap, record.metadata.crop, state, surface.width, surface.height, true, record.metadata);
+      drawPhoto(context, record.bitmap, record.metadata.crop, FILLER_KEYS.includes(key)?{...state,photoBackground:fillerAppearance(state,key).transparent?'transparent':fillerAppearance(state,key).color}:state, surface.width, surface.height, true, record.metadata);
       applyPaperEstimate(context, state);
     } else if(key==='back-cover') drawBackCover(context,state,surface.width,surface.height,true);
     else landscape(context, surface.width, surface.height, key.startsWith('month-') ? Number(key.slice(6)) : key === 'front-cover' ? 2 : 8);
@@ -361,11 +366,12 @@ export function createCalendarScene(container) {
   function texture(kind, month = 0) {
     const surface = textureSurface();
     const context = surface.getContext('2d');
-    context.fillStyle = kind === 'solid' ? normalizeEndSpreadColor(state.endSpreadColor) : '#fff';
+    context.fillStyle = kind === 'solid'&&!FILLER_KEYS.includes(month)&&!normalizeLayout(state.layout).endSpreadColorTransparent ? normalizeEndSpreadColor(state.endSpreadColor) : '#fff';
     context.fillRect(0, 0, surface.width, surface.height);
     const key = kind === 'photo' ? `month-${month}` : kind === 'cover' ? month : null;
     if (key) paintPhoto(surface, key);
-    if (kind === 'grid') drawCalendarGrid(context, readerState(state), month, surface.width, surface.height);
+    if(kind==='solid'&&FILLER_KEYS.includes(month))drawFillerPage(context,state,month,surface.width,surface.height);
+    if (kind === 'grid') drawCalendarGrid(context, readerState(state), month, surface.width, surface.height,ctx=>paintLayoutBackground(ctx,readerState(state)));
     if (!key && kind !== 'solid') guides(context, surface.width, surface.height);
     const map = canvasTexture(surface);
     if (key) photoTextures.set(key, { map, revision: key==='back-cover'&&!backCoverUsesImage(state)?assets.revision:assets.get(key)?.revision ?? -1 });
@@ -546,7 +552,7 @@ export function createCalendarScene(container) {
 
   function pageArtwork(page) {
     return {kind:page.kind==='photo' && !page.key.startsWith('month-') ? 'cover' : page.kind,
-      slot:page.kind==='photo' && !page.key.startsWith('month-') ? page.key : page.month ?? 0};
+      slot:page.kind==='photo' && !page.key.startsWith('month-') ? page.key : page.fillerKey??page.month??0};
   }
 
   function plannedLeaf(index) {
@@ -615,7 +621,7 @@ export function createCalendarScene(container) {
     pagePlan = calendarPagePlan(state);
     animation = null;
     closedPose = state.previewClosed ? 1 : 0;
-    model.position.set(0, 0, 0);
+    model.position.set(panOffset.x, panOffset.y, panOffset.z);
     if (state.bindingStyle === 'saddle') buildSaddle();
     else rebuildWire();
     const span = Math.max(state.width, state.height * 2);
@@ -631,7 +637,7 @@ export function createCalendarScene(container) {
   }
 
   function arrangeView() {
-    model.position.set(0, closedPose * state.height / 2, 0);
+    model.position.set(panOffset.x, closedPose * state.height / 2 + panOffset.y, panOffset.z);
     if (saddleStaples) saddleStaples.rotation.x = -Math.PI / 2 * closedPose;
     const halfHeight = state.height * (1 - closedPose * 0.5);
     const studioSpan = Math.max(STUDIO_SPAN_MINIMUM, state.width, halfHeight * 2);
@@ -689,7 +695,7 @@ export function createCalendarScene(container) {
       : 'Interactive top-bound wire/coil calendar.';
     canvas.setAttribute('aria-label', state.previewClosed
       ? `Fully closed ${state.year} calendar, ${state.width} by ${state.height} inches. ${state.bindingStyle === 'saddle' ? `${pagePlan.physicalSheets} nested folded folios` : `${pagePlan.interiorSheets} interior sheets and two covers`}. Front exterior photo faces forward; rotate to inspect the back exterior, spine and paper edges. Procedural studio HDR, ${state.paperGsm} gsm interior, ${state.coverGsm} gsm cover, ${state.paperFinish} finish. Drag to rotate; scroll or pinch to zoom.`
-      : state.endSpread ? `${calendarSelectionLabel(state)} spread. Both full-page halves are solid ${normalizeEndSpreadColor(state.endSpreadColor)}, with no photo or date grid. ${state.bindingStyle==='saddle'?`${pagePlan.physicalSheets} nested folded sheets and two staples.`:'Top-bound wire/coil calendar.'} Drag to rotate; scroll or pinch to zoom.`
+      : state.endSpread ? `${calendarSelectionLabel(state)} spread. Top and bottom pages use their independently configured image or color. ${state.bindingStyle==='saddle'?`${pagePlan.physicalSheets} nested folded sheets and two staples.`:'Top-bound wire/coil calendar.'} Drag to rotate; scroll or pinch to zoom.`
       : `${MONTHS[state.month]} ${state.year}. ${bindingLabel} Drag to rotate through the front, edges and back; scroll or pinch to zoom.`);
   }
 
@@ -727,7 +733,11 @@ export function createCalendarScene(container) {
     next.backCover=normalizeBackCover(next.backCover);
     next.artworkMetadata=normalizeArtworkMetadata(next.artworkMetadata);
     const nextLayoutSignature=JSON.stringify(next.layout),layoutChanged=nextLayoutSignature!==layoutSignature;
-    const rebuildNeeded = !initialized || structuralChange || holidaysChanged || layoutChanged;
+    const nextMonthlyArtworkSignature=JSON.stringify(next.artworkMetadata);
+    const monthlyArtworkChanged=next.layout.artworkPlacement!=='none'&&nextMonthlyArtworkSignature!==monthlyArtworkSignature;
+    monthlyArtworkSignature=nextMonthlyArtworkSignature;
+    const backgroundChanged=(next.layout.layoutBackgroundImage||FILLER_KEYS.some(key=>fillerAppearance(next,key).image)) && mediaRevision!==assets.revision;
+    const rebuildNeeded = !initialized || structuralChange || holidaysChanged || layoutChanged || backgroundChanged || monthlyArtworkChanged;
     state = next;
     holidaySignature = nextHolidaySignature;
     layoutSignature = nextLayoutSignature;
@@ -754,12 +764,13 @@ export function createCalendarScene(container) {
   }
 
   /** Restore the front three-quarter camera without changing the selected month. */
-  function resetView() { azimuth = DEFAULT_AZIMUTH; elevation = DEFAULT_ELEVATION; zoomFactor = 1; resize(); }
+  function resetView() { azimuth = DEFAULT_AZIMUTH; elevation = DEFAULT_ELEVATION; zoomFactor = 1; panOffset.set(0, 0, 0); resize(); }
 
   listen(canvas, 'pointerdown', event => {
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    const canPan = !mobile && event.pointerType === 'mouse' && event.shiftKey && pointers.size === 0;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, mode: canPan ? 'pan' : 'rotate' });
     canvas.setPointerCapture(event.pointerId);
-    canvas.style.cursor = 'grabbing';
+    canvas.style.cursor = canPan ? 'move' : 'grabbing';
   });
   listen(canvas, 'pointermove', event => {
     const previous = pointers.get(event.pointerId);
@@ -769,11 +780,22 @@ export function createCalendarScene(container) {
       const before = Math.hypot(previous.x - other.x, previous.y - other.y);
       const after = Math.hypot(event.clientX - other.x, event.clientY - other.y);
       if (before > 0 && after > 0) zoomFactor = clamp(zoomFactor * before / after, 0.38, 3.5);
+    } else if (previous.mode === 'pan') {
+      // Translate the calendar in the camera's screen plane. Scale by orbit
+      // distance so the object follows the pointer at each zoom level.
+      const rect = canvas.getBoundingClientRect();
+      const worldPerPixel = (2 * distance * zoomFactor * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / Math.max(1, rect.height);
+      const right = new THREE.Vector3(Math.cos(azimuth), 0, -Math.sin(azimuth));
+      const up = new THREE.Vector3(-Math.sin(azimuth) * Math.sin(elevation), Math.cos(elevation), -Math.cos(azimuth) * Math.sin(elevation));
+      panOffset.addScaledVector(right, (event.clientX - previous.x) * worldPerPixel);
+      panOffset.addScaledVector(up, -(event.clientY - previous.y) * worldPerPixel);
+      arrangeView();
+      renderDirty = true;
     } else {
       azimuth -= (event.clientX - previous.x) * 0.007;
       elevation = clamp(elevation + (event.clientY - previous.y) * 0.007, -Math.PI / 2 + 0.025, Math.PI / 2 - 0.025);
     }
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    pointers.set(event.pointerId, { ...previous, x: event.clientX, y: event.clientY });
   });
   const release = event => { pointers.delete(event.pointerId); if (!pointers.size) canvas.style.cursor = 'grab'; };
   listen(canvas, 'pointerup', release);

@@ -1,11 +1,14 @@
+import { drawFillerPage } from './filler-pages.js';
+import { commitNumericOnBlur } from './numeric-input.js';
+import { paintLayoutBackground } from './layout-background.js';
 import { readPreference, writePreference } from './browser-storage.js';
-import { MONTHS, LAYOUT_FONTS, LAYOUT_ROLES, ARTWORK_FONT_ROLES, LAYOUT_LIMITS, FONT_SIZE_LIMITS, normalizeLayout, drawCalendarGrid, readerState, DEFAULT_END_SPREAD_COLOR, normalizeEndSpreadColor, calendarSelection, calendarSelectionLabel } from './layout.js';
+import { MONTHS, BACKGROUND_FIELDS, FILLER_KEYS, fillerPrefix, fillerAppearance, MINI_FONT_ROLES, LAYOUT_FONTS, LAYOUT_ROLES, ARTWORK_FONT_ROLES, LAYOUT_LIMITS, FONT_SIZE_LIMITS, normalizeLayout, drawCalendarGrid, readerState, DEFAULT_END_SPREAD_COLOR, normalizeEndSpreadColor, calendarSelection, calendarSelectionLabel } from './layout.js';
 import { normalizeHolidays } from './holidays.js';
 
 const PREVIEW_LONG_EDGE = 1400;
 const PREVIEW_MAX_PIXELS = 1400 * 1400;
 import { FONT_LABELS, FONT_CATALOG } from './fonts.js';
-const ROLE_LABELS = {title:'Month title',year:'Year',weekday:'Weekday headings',date:'Date numbers',holiday:'Holiday names',artist:'Artist name',artworkTitle:'Artwork title',description:'Artwork description'};
+const ROLE_LABELS = {miniMonth:'Miniature month headings',miniWeekday:'Miniature weekdays',miniDate:'Miniature dates',title:'Month title',year:'Year',weekday:'Weekday headings',date:'Date numbers',holiday:'Holiday names',artist:'Artist name',artworkTitle:'Artwork title',description:'Artwork description'};
 const STYLE_OPTIONS = [['normal','Regular'],['bold','Bold'],['italic','Italic'],['bolditalic','Bold italic']];
 const ALIGN_OPTIONS = [['left','Left'],['center','Center'],['right','Right']];
 const GRID_FIELDS = [['cellBackground','Date-cell background','color'],['lineColor','Grid line color','color'],['lineWidth','Grid stroke width · pt','number']];
@@ -19,7 +22,7 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
   let zoom=Number.isFinite(savedZoom)?Math.max(1,Math.min(4,savedZoom)):1;
   const viewport=byId('layout-zoom-viewport'),zoomValue=byId('layout-zoom-value');
   function applyZoom() {
-    const available=Math.max(1,viewport.clientWidth-20),height=280;
+    const available=Math.max(1,viewport.clientWidth-20),height=Math.max(1,viewport.clientHeight-20);
     const fit=Math.min(available/canvas.width,height/canvas.height);
     canvas.style.width=`${Math.round(canvas.width*fit*zoom)}px`;
     canvas.style.height=`${Math.round(canvas.height*fit*zoom)}px`;
@@ -64,31 +67,33 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
       if(type==='number') {
         if(!Number.isFinite(value)) {fieldNotice=`${labelText}: enter a number. The last valid value is still applied; export remains available.`;renderNotices();return;}
         const [min,max]=path[0]==='fonts'?FONT_SIZE_LIMITS:LAYOUT_LIMITS[path[0]];
-        const original=value;value=Math.max(min,Math.min(max,value));if(path[0]==='holidayLines') value=Math.round(value);
-        fieldNotice=value!==original?`${labelText} was limited to ${value} (${min}–${max}).`:'';
-        if(value!==original) control.value=String(value);
+        // Preserve incomplete drafts (for example 3 on the way to 31) while focused.
+        if(value<min||value>max) {fieldNotice='';return;}
+        if(path[0]==='holidayLines') value=Math.round(value);
+        fieldNotice='';
       } else fieldNotice='';
       if(path[0]==='fonts') current.fonts[path[1]][path[2]]=value;
       else current[path[0]]=value;
       onLayoutChange(normalizeLayout(current));
     });
-    // Empty numeric drafts never make the document invalid or disable photo export.
-    control.addEventListener('blur',()=>{
-      if(control.type!=='number') return;
-      const wasEmpty=!Number.isFinite(control.valueAsNumber),settings=normalizeLayout(getState().layout);
-      control.value=path[0]==='fonts'?settings.fonts[path[1]][path[2]]:settings[path[0]];
-      if(wasEmpty) {fieldNotice=`${labelText}: restored the last valid value.`;renderNotices();}
+    if(type==='number') commitNumericOnBlur(control,...(path[0]==='fonts'?FONT_SIZE_LIMITS:LAYOUT_LIMITS[path[0]]),()=>{
+      const settings=normalizeLayout(getState().layout);
+      return path[0]==='fonts'?settings.fonts[path[1]][path[2]]:settings[path[0]];
     });
+    if(type==='color'&&path.length===1&&BACKGROUND_FIELDS.includes(path[0]))createControl(parent,`Transparent ${labelText.toLowerCase()}`,[`${path[0]}Transparent`],'checkbox');
   }
-  for(const role of [...LAYOUT_ROLES,...ARTWORK_FONT_ROLES]) {
+  const miniTypography=document.createElement('div');
+  for(const role of [...LAYOUT_ROLES,...ARTWORK_FONT_ROLES,...MINI_FONT_ROLES]) {
     const group=document.createElement('fieldset'),legend=document.createElement('legend'),fields=document.createElement('div');
-    group.className='layout-font-group';legend.textContent=ROLE_LABELS[role];fields.className='layout-field-grid';group.append(legend,fields);byId(ARTWORK_FONT_ROLES.includes(role)?'layout-artwork-font-controls':'layout-font-controls').append(group);
+    group.className='layout-font-group';legend.textContent=ROLE_LABELS[role];fields.className='layout-field-grid';group.append(legend,fields);(MINI_FONT_ROLES.includes(role)?miniTypography:byId(`layout-${ARTWORK_FONT_ROLES.includes(role)?'artwork':['title','year'].includes(role)?'heading':role==='weekday'?'weekday':'cell'}-controls`)).append(group);
     createControl(fields,'Font family',['fonts',role,'family'],'select',Object.keys(LAYOUT_FONTS).map(key=>[key,FONT_LABELS[key]]));
     createControl(fields,'Font size · pt',['fonts',role,'size']);
     createControl(fields,'Font style',['fonts',role,'style'],'select',STYLE_OPTIONS);
     createControl(fields,'Text color',['fonts',role,'color'],'color');
     createControl(fields,'Horizontal alignment',['fonts',role,'align'],'select',ALIGN_OPTIONS);
+    if(MINI_FONT_ROLES.includes(role)) createControl(fields,'Vertical alignment',[`${role}Vertical`],'select',[['top','Top'],['middle','Middle'],['bottom','Bottom']]);
     if(role==='holiday') {
+      createControl(fields,'Vertical placement',['holidayVertical'],'select',[['flow','With date number'],['top','Top of cell'],['bottom','Bottom of cell']]);
       createControl(fields,'Auto-contrast holiday text',['holidayContrast'],'checkbox');
     }
   }
@@ -97,10 +102,100 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
   const holidayLabel=document.createElement('label'),holidayColor=document.createElement('input');
   holidayColor.id='layout-holiday-highlight-color';holidayColor.type='color';holidayColor.dataset.layoutControl='';
   holidayLabel.htmlFor=holidayColor.id;holidayLabel.append(document.createTextNode('Holiday highlight background'),holidayColor);gridFields.append(holidayLabel);
+  createControl(gridFields,'Transparent holiday highlight',['holidayBackgroundTransparent'],'checkbox');
   holidayColor.addEventListener('input',()=>onHolidayChange(normalizeHolidays({...getState().holidays,color:holidayColor.value})));
   for(const [key,label,type] of GRID_FIELDS.slice(1)) createControl(gridFields,label,[key],type);
-  for(const [key,label] of SPACING_FIELDS) createControl(byId('layout-spacing-controls'),label,[key]);
+  for(const [side,title] of [['trailing','Trailing cells · next month'],['leading','Leading cells · previous month']]) {
+    const group=document.createElement('fieldset'),legend=document.createElement('legend'),fields=document.createElement('div');
+    group.className='layout-adjacent-group';legend.textContent=title;fields.className='layout-field-grid';group.append(legend,fields);byId('layout-adjacent-controls').prepend(group);
+    createControl(fields,'Display',[`${side}Mode`],'select',[['hidden','Hide cells'],['blank','Blank cells'],['dates','Adjacent-month dates']]);
+    createControl(fields,'Background',[`${side}Background`],'color');
+    createControl(fields,'Date color',[`${side}Color`],'color');
+  }
+  const shapeGroup=document.createElement('fieldset'),shapeLegend=document.createElement('legend'),shapeFields=document.createElement('div');
+  shapeGroup.className='layout-adjacent-group';shapeLegend.textContent='Date-number shapes';shapeFields.className='layout-field-grid';shapeGroup.append(shapeLegend,shapeFields);byId('layout-cell-controls').append(shapeGroup);
+  createControl(shapeFields,'Shape',['dateShape'],'select',[['none','None'],['circle','Circle'],['diamond','Diamond'],['star','Star'],['oval','Oval'],['square','Square'],['squircle','Squircle']]);
+  createControl(shapeFields,'Fill color',['dateShapeColor'],'color');
+  createControl(shapeFields,'Size · pt',['dateShapeSize']);
+  const miniGroup=document.createElement('fieldset'),miniLegend=document.createElement('legend'),miniFields=document.createElement('div');
+  miniGroup.className='layout-adjacent-group';miniLegend.textContent='Placement';miniFields.className='layout-field-grid';miniGroup.append(miniLegend,miniFields);byId('layout-mini-controls').append(miniGroup);
+  createControl(miniFields,'Previous & next month',['miniCalendars'],'checkbox');
+  createControl(miniFields,'Placement',['miniCalendarPlacement'],'select',[['beginning','Beginning (auto fallback)'],['end','Bottom right']]);
+  createControl(miniFields,'Retain extra bottom row',['miniCalendarExtraRow'],'checkbox');
+  byId('layout-mini-controls').append(miniTypography);
+  for(const [key,label] of SPACING_FIELDS) {
+    const section=key.startsWith('inset')?'page':key.startsWith('heading')?'heading':key.startsWith('weekday')?'weekday':'spacing';
+    let fields=byId(`layout-${section}-controls`);
+    if(section!=='spacing') {
+      let spacing=fields.querySelector(':scope > .layout-element-spacing');
+      if(!spacing) {spacing=document.createElement('div');spacing.className='layout-field-grid layout-element-spacing';fields.append(spacing);}
+      fields=spacing;
+    }
+    createControl(fields,label,[key]);
+  }
   createControl(byId('layout-spacing-controls'),'Date block vertical alignment',['dateVertical'],'select',[['top','Top'],['middle','Middle'],['bottom','Bottom']]);
+  function styleFields(section,title,fields) {
+    const group=document.createElement('fieldset'),legend=document.createElement('legend'),body=document.createElement('div');
+    group.className='layout-adjacent-group';legend.textContent=title;body.className='layout-field-grid';group.append(legend,body);byId(`layout-${section}-controls`).append(group);
+    for(const [key,label,type='number',options=null] of fields) createControl(body,label,[key],type,options);
+    return body;
+  }
+  styleFields('heading','Month & year arrangement',[
+    ['headerLayout','Layout','select',[['split','Separate containers'],['grouped','Month & year together']]],
+    ['headerGroupAlign','Group alignment','select',ALIGN_OPTIONS],['headerGroupGap','Month → year spacing · pt']
+  ]);
+  styleFields('cell','Grid & cell appearance',[
+    ['cellFill','Fill date cells','checkbox'],['gridLineGap','Line-end gap · pt'],['gridOuterBoundary','Show outer grid boundary','checkbox'],
+    ['cellGap','Space between cells · pt'],['cellRadius','Individual cell radius · pt'],['gridRadius','Outer corner radius · pt'],['gridRoundWeekdays','Include weekdays in rounding','checkbox']
+  ]);
+  styleFields('cell','Additional outer border',[
+    ['outerBorder','Show second border','checkbox'],['outerBorderWeekdays','Include weekday headings','checkbox'],['outerBorderColor','Border color','color'],['outerBorderWidth','Border width · pt'],['outerBorderGap','Border offset · pt']
+  ]);
+  styleFields('weekday','Container',[
+    ['weekdayFill','Fill weekday cells','checkbox'],['weekdayBackground','Background','color'],['weekdayBorderColor','Border color','color'],['weekdayBorderWidth','Border width · pt']
+  ]);
+  styleFields('weekday','Corner rounding',[
+    ['weekdayRadiusMode','Apply corners to','select',[['each','Every weekday cell'],['outer','Outer ends of row only']]],
+    ['weekdayRadiusTL','Top-left radius · pt'],['weekdayRadiusTR','Top-right radius · pt'],
+    ['weekdayRadiusBL','Bottom-left radius · pt'],['weekdayRadiusBR','Bottom-right radius · pt']
+  ]);
+  styleFields('weekday','Borders between weekdays',[
+    ['weekdaySeparators','Show internal borders','checkbox'],['weekdaySeparatorColor','Border color','color'],['weekdaySeparatorWidth','Border width · pt']
+  ]);
+  for(const [prefix,title] of [['monthHeader','Month container'],['yearHeader','Year container']]) styleFields('heading',title,[
+    [`${prefix}PaddingX`,'Horizontal padding · pt'],[`${prefix}PaddingY`,'Vertical padding · pt'],
+    [`${prefix}Fill`,'Fill container','checkbox'],[`${prefix}Background`,'Background','color'],[`${prefix}BorderColor`,'Border color','color'],[`${prefix}BorderWidth`,'Border width · pt'],[`${prefix}RadiusMode`,'Apply corners to','select',[['each','All container corners'],['outer','Outer ends of header only']]],
+    [ `${prefix}RadiusTL`,'Top-left radius · pt'],[`${prefix}RadiusTR`,'Top-right radius · pt'],[`${prefix}RadiusBL`,'Bottom-left radius · pt'],[`${prefix}RadiusBR`,'Bottom-right radius · pt']
+  ]);
+  styleFields('heading','Borders between month & year',[
+    ['headerSeparatorMode','Facing borders','select',[['inherit','Use container borders'],['custom','Custom internal borders'],['none','No internal borders']]],
+    ['headerSeparatorColor','Border color','color'],['headerSeparatorWidth','Border width · pt']
+  ]);
+  styleFields('artwork','Monthly artwork details',[
+    ['artworkPlacement','Show details','select',[['none','Back cover only'],['header','Below month & year'],['month','Below month title'],['year','Below year'],['footer','Bottom of calendar page']]],
+    ['artworkShowArtist','Artist name','checkbox'],['artworkShowTitle','Artwork title','checkbox'],['artworkShowDescription','Description','checkbox']
+  ]);
+  styleFields('artwork','Monthly details alignment & container',[
+    ['artworkDetailsWidth','Container width · in (0 = automatic)'],['artworkDetailsHeight','Container height · in'],
+    ['artworkContainerAlign','Container alignment','select',ALIGN_OPTIONS],
+    ['artworkTextAlign','Horizontal alignment','select',[['inherit','Use individual text alignment'],...ALIGN_OPTIONS]],
+    ['artworkVertical','Vertical alignment','select',[['top','Top'],['middle','Middle'],['bottom','Bottom']]],
+    ['artworkPaddingX','Horizontal padding · pt'],['artworkPaddingY','Vertical padding · pt'],
+    ['artworkBackground','Background','color'],['artworkBorderColor','Border color','color'],['artworkBorderWidth','Border width · pt'],
+    ['artworkRadiusTL','Top-left radius · pt'],['artworkRadiusTR','Top-right radius · pt'],['artworkRadiusBL','Bottom-left radius · pt'],['artworkRadiusBR','Bottom-right radius · pt']
+  ]);
+  for(const key of FILLER_KEYS) {
+    const prefix=fillerPrefix(key),fields=styleFields('spreads',key.replace('-',' · '),[[`${prefix}Color`,'Background','color'],[`${prefix}Image`,'Use custom image','checkbox']]);
+    const button=document.createElement('button');button.type='button';button.className='layout-image-picker';button.textContent='Choose / frame image';
+    button.addEventListener('click',()=>{onTabChange('images');const target=byId('photo-target');target.value=key;target.dispatchEvent(new Event('change'));});fields.append(button);
+  }
+  const backgroundFields=styleFields('background','Full layout background',[
+    ['layoutBackground','Background color','color'],['layoutBackgroundImage','Use background image','checkbox']
+  ]);
+  const chooseBackground=document.createElement('button');chooseBackground.type='button';chooseBackground.className='layout-image-picker';chooseBackground.textContent='Choose / frame background image';
+  chooseBackground.addEventListener('click',()=>{onTabChange('images');const target=byId('photo-target');target.value='layout-background';target.dispatchEvent(new Event('change'));});backgroundFields.append(chooseBackground);
+  const backgroundHelp=document.createElement('p');backgroundHelp.className='layout-help';backgroundHelp.textContent='Assigning an image enables it automatically. Opaque cell and header fills cover it; turn those fills off where you want the image to show.';backgroundFields.append(backgroundHelp);
+  createControl(byId('end-spread-color').parentElement.parentElement,'Transparent fallback / booklet padding',['endSpreadColorTransparent'],'checkbox');
   // Give generated and static fields the same label/control structure.
   for(const label of byId('layout-controls').querySelectorAll('label')) {
     const textNodes=[...label.childNodes].filter(node=>node.nodeType===3&&node.textContent.trim());
@@ -135,8 +230,17 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
     byId('image-picker-panel').hidden=selected!==0;byId('layout-modifier-panel').hidden=selected!==1;byId('back-cover-panel').hidden=selected!==2;
     for(const {control,path} of controls) {
       if(control===document.activeElement && control.type==='number') continue;
-      const value=path[0]==='fonts'?settings.fonts[path[1]][path[2]]:settings[path[0]];
+      let value=path[0]==='fonts'?settings.fonts[path[1]][path[2]]:settings[path[0]];
+      if(value===null&&control.type==='color')value=normalizeEndSpreadColor(state.endSpreadColor);
       if(control.type==='checkbox') control.checked=value;else control.value=value;
+      if(control.type==='color'&&path.length===1&&BACKGROUND_FIELDS.includes(path[0]))control.disabled=settings[`${path[0]}Transparent`];
+      if(['headerSeparatorColor','headerSeparatorWidth'].includes(path[0]))control.disabled=settings.headerSeparatorMode!=='custom';
+      if(['weekdaySeparatorColor','weekdaySeparatorWidth'].includes(path[0])) control.disabled=!settings.weekdaySeparators;
+      if(['headerGroupAlign','headerGroupGap'].includes(path[0])) control.disabled=settings.headerLayout!=='grouped';
+      if(['dateShapeColor','dateShapeSize'].includes(path[0])) control.disabled=settings.dateShape==='none'||(path[0]==='dateShapeColor'&&settings.dateShapeColorTransparent);
+      if(path[0].startsWith('miniCalendar')&&path[0]!=='miniCalendars') control.disabled=!settings.miniCalendars;
+      const side=['leading','trailing'].find(side=>path[0].startsWith(side));
+      if(side && path[0]!==`${side}Mode`) control.disabled=(path[0]===`${side}Background`&&settings[`${side}BackgroundTransparent`])||settings[`${side}Mode`]==='hidden'||(path[0]===`${side}Color`&&settings[`${side}Mode`]!=='dates');
       if(path[0]==='fonts'&&path[2]==='style'){
         const family=FONT_CATALOG[settings.fonts[path[1]].family];
         for(const option of control.options)option.disabled=Boolean(family&&!Object.hasOwn(family.files,option.value));
@@ -146,17 +250,20 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
       button.setAttribute('aria-pressed',String(button.dataset.value===control.value));
       button.disabled=Boolean([...control.options].find(option=>option.value===button.dataset.value)?.disabled);
     }
-    holidayColor.value=normalizeHolidays(state.holidays).color;
-    endSpreadColor.value=normalizeEndSpreadColor(state.endSpreadColor);
-    const endSelected=!state.previewClosed&&['opening','closing'].includes(state.endSpread),title=endSelected?`${calendarSelectionLabel(state)} · solid end spread`:`${MONTHS[state.month]} ${state.year}`;
+    holidayColor.value=normalizeHolidays(state.holidays).color;holidayColor.disabled=settings.holidayBackgroundTransparent;
+    endSpreadColor.value=normalizeEndSpreadColor(state.endSpreadColor);endSpreadColor.disabled=settings.endSpreadColorTransparent;
+    const endSelected=!state.previewClosed&&['opening','closing'].includes(state.endSpread),title=endSelected?`${calendarSelectionLabel(state)} · filler spread`:`${MONTHS[state.month]} ${state.year}`;
     byId('layout-preview-title').textContent=`${title}${state.previewClosed?' · selected month (cover shown in 3D)':''}`;
     byId('layout-preview-title').nextElementSibling.textContent=endSelected?'FLAT / FULL SPREAD':'FLAT / TRIM PAGE';
-    canvas.setAttribute('aria-label',endSelected?`${title}. Both full-page halves use ${endSpreadColor.value}, with no photo or date grid.`:`${title}, flat six-row calendar. ${state.week===1?'Monday':'Sunday'} first. Global layout applies to all twelve months.`);
-    byId('layout-preview-caption').textContent=endSelected?'Both halves of enabled opening and closing spreads use this shared color. Required booklet padding uses the same color; exterior cover artwork is unchanged. Solid artwork extends through applicable PDF bleed. Colors are RGB, not a print proof.':'Colors are RGB, not a print proof.';
+    canvas.setAttribute('aria-label',endSelected?`${title}. Top and bottom pages use their own image or background color.`:`${title}, flat calendar. ${state.week===1?'Monday':'Sunday'} first. Global layout applies to all twelve months.`);
+    byId('layout-preview-caption').textContent=endSelected?'Top and bottom pages have independent images and colors. Required booklet padding uses the shared fallback color. Colors are RGB, not a print proof.':'Colors are RGB, not a print proof.';
     const previewHeight=state.height*(endSelected?2:1),scale=Math.min(PREVIEW_LONG_EDGE/Math.max(state.width,previewHeight),Math.sqrt(PREVIEW_MAX_PIXELS/(state.width*previewHeight)));
     canvas.width=Math.max(1,Math.round(state.width*scale));canvas.height=Math.max(1,Math.round(previewHeight*scale));
     lastPlan=null;
-    if(context) {context.fillStyle=endSelected?endSpreadColor.value:'#ffffff';context.fillRect(0,0,canvas.width,canvas.height);if(!endSelected)lastPlan=drawCalendarGrid(context,readerState(state),state.month,canvas.width,canvas.height);}
+    if(context) {context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height);if(endSelected) {
+      for(const [index,side] of ['top','bottom'].entries()){context.save();context.translate(0,index*canvas.height/2);drawFillerPage(context,state,`${state.endSpread}-${side}`,canvas.width,canvas.height/2);context.restore();}
+    }
+    if(!endSelected)lastPlan=drawCalendarGrid(context,readerState(state),state.month,canvas.width,canvas.height,ctx=>paintLayoutBackground(ctx,readerState(state)));}
     else fieldNotice='Flat preview requires a browser Canvas 2D context. Layout controls and vector PDF export remain available.';
     applyZoom();renderNotices();
   }

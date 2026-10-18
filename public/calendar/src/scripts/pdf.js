@@ -1,8 +1,13 @@
+import { pdfOutline, pdfDecoration } from './grid-decoration.js';
+import { loadCalendarFonts } from './fonts.js';
+import { canvasFont } from './layout.js';
+import { normalizePdfExportTarget, prestoPhotoExportState, prestoPhotoSummary, configurePrestoPhotoPdf, prestoPhotoPageBoxes } from './prestophoto.js';
 import { pdfSheetGeometry } from './pdf-geometry.js';
-import { ASSET_KEYS, assetLabel, printPages, calendarLayout, calendarPagePlan, readerState, validateSaddleImposition, normalizeEndSpreadColor } from './layout.js';
+import { ASSET_KEYS, normalizeLayout, fillerAppearance, FILLER_KEYS, assetLabel, printPages, calendarLayout, calendarPagePlan, readerState, validateSaddleImposition, normalizeEndSpreadColor } from './layout.js';
 import { backCoverUsesImage, assets, effectiveDpi, photoHasGaps, picaAvailable, printRasterSpec, printPhotoCanvas, TARGET_PPI, drawPhoto } from './media.js';
 
-import { printGeneratedBackCover, drawBackCover } from './back-cover.js';
+import { printGeneratedBackCover, drawBackCover, normalizeBackCover } from './back-cover.js';
+import { backImageKey, isBackImageKey, backObjectImageMapping } from './back-cover-model.js';
 
 const POINTS_PER_INCH = 72;
 const MARK_SLUG = .25;
@@ -13,16 +18,28 @@ const URL_LIFETIME = 60000;
 const breathe = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
 
 /** Back art is optional only when absent; unavailable saved uploads must still fail preflight. */
-export function requiredPhotoKeys(state) { return ASSET_KEYS.filter(key=>key!=='back-cover'||backCoverUsesImage(state)); }
+export function requiredPhotoKeys(state) {
+  const required=new Set(printPages(state).filter(page=>page.kind==='photo').map(page=>page.key));
+  if(!backCoverUsesImage(state))required.delete('back-cover');
+  if(normalizeLayout(state.layout).layoutBackgroundImage)required.add('layout-background');
+  if(!backCoverUsesImage(state)&&normalizeBackCover(state.backCover).backgroundImage)required.add('back-cover-background');
+  const settings=normalizeBackCover(state.backCover),custom=!backCoverUsesImage(state)?settings.objects.filter(object=>object.type==='image').map(object=>backImageKey(object.id)):[];
+  return [...ASSET_KEYS.filter(key=>required.has(key)),...custom];
+}
 
 /** Preflight the complete set; missing or permission-unavailable art is never silently omitted. */
 export function preflight(state) {
   const required=requiredPhotoKeys(state),missing = required.filter(key => !assets.get(key)?.bitmap);
-  const monthlyState=readerState(state);
-  const low = required.filter(key => assets.get(key)?.bitmap && effectiveDpi(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state)<TARGET_PPI)
-    .map(key => `${assetLabel(key)} (${Math.floor(effectiveDpi(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state))} DPI)`);
+  const monthlyState=readerState(state),objects=normalizeBackCover(state.backCover).objects;
+  const dpiFor=key=>{
+    const metadata=assets.get(key).metadata,object=objects.find(item=>backImageKey(item.id)===key);
+    if(object){const mapping=backObjectImageMapping(object,metadata);return Math.min(metadata.sourceWidth/mapping.width,metadata.sourceHeight/mapping.height);}
+    return effectiveDpi(metadata,key.startsWith('month-')?monthlyState:state);
+  };
+  const low = required.filter(key => assets.get(key)?.bitmap && dpiFor(key)<TARGET_PPI)
+    .map(key => `${objects.find(object=>backImageKey(object.id)===key)?.name??assetLabel(key)} (${Math.floor(dpiFor(key))} DPI)`);
   const raster=printRasterSpec(state),resizingAvailable=picaAvailable();
-  const gaps = required.filter(key => assets.get(key)?.bitmap && photoHasGaps(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state));
+  const gaps = required.filter(key => !isBackImageKey(key)&&assets.get(key)?.bitmap && photoHasGaps(assets.get(key).metadata,key.startsWith('month-')?monthlyState:state));
   return {missing,low,gaps,required:required.length,backCoverMode:backCoverUsesImage(state)?'uploaded':'generated',pending:assets.pending,rasterPpi:Math.floor(Math.min(TARGET_PPI,raster.ppi)),raster,resizingAvailable,ready:missing.length===0 && assets.pending===0 && resizingAvailable};
 }
 
@@ -57,11 +74,22 @@ function cropMarks(doc,state,slug) {
 /** Export shared text placement as vector core-font text, never rasterized grid artwork. */
 function vectorGrid(doc,state,month,offset) {
   const plan=calendarLayout(state,month),shift=offset+state.bleed;
-  for(const rect of plan.rects) {doc.setFillColor(rect.color);doc.rect(shift+rect.x,shift+rect.y,rect.width,rect.height,'F');}
+  if(!plan.settings.layoutBackgroundTransparent){doc.setFillColor(plan.settings.layoutBackground);doc.rect(shift-state.bleed,shift-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed,'F');}
+  if(plan.settings.layoutBackgroundImage&&state.gridBackgroundJpeg) doc.addImage(state.gridBackgroundJpeg,'JPEG',shift-state.bleed,shift-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed,undefined,'NONE');
+  for(const rect of plan.rects) {doc.saveGraphicsState();if(rect.clip&&plan.gridClip){pdfOutline(doc,plan.gridClip,shift);doc.clip();doc.discardPath();}doc.setFillColor(rect.color);doc.rect(shift+rect.x,shift+rect.y,rect.width,rect.height,'F');doc.restoreGraphicsState();}
   if(plan.geometry.lineWidth>0) {
+    doc.saveGraphicsState();if(plan.gridClip){pdfOutline(doc,plan.gridClip,shift);doc.clip();doc.discardPath();}
     doc.setDrawColor(plan.settings.lineColor);doc.setLineWidth(plan.geometry.lineWidth);
     for(const line of plan.lines) doc.line(shift+line.x1,shift+line.y1,shift+line.x2,shift+line.y2);
+    doc.restoreGraphicsState();
   }
+  for(const item of plan.decorations) pdfDecoration(doc,item,plan.gridClip,shift);
+  for(const shape of plan.shapes) {
+    const [first,...rest]=shape.points;
+    const deltas=rest.map((point,index)=>[point[0]-shape.points[index][0],point[1]-shape.points[index][1]]);
+    doc.setFillColor(shape.color);doc.lines(deltas,shift+first[0],shift+first[1],[1,1],'F',true);
+  }
+  if(state.pdfExportTarget==='prestophoto') return plan;
   for(const item of plan.texts) {
     doc.setFont(item.font.family,item.font.style);doc.setFontSize(item.size*POINTS_PER_INCH);doc.setTextColor(item.color);
     doc.text(item.text,shift+item.x,shift+item.y,{align:'left',baseline:'alphabetic'});
@@ -69,6 +97,8 @@ function vectorGrid(doc,state,month,offset) {
 }
 /** Encode only the saved photo crop through Pica; date grids remain vector artwork. */
 async function photoArtwork(key,state,files,warnings,onProgress) {
+  if(key==='layout-background')state={...state,photoBackground:normalizeLayout(state.layout).layoutBackgroundTransparent?'transparent':normalizeLayout(state.layout).layoutBackground};
+  if(FILLER_KEYS.includes(key))state={...state,photoBackground:fillerAppearance(state,key).transparent?'transparent':fillerAppearance(state,key).color};
   if(state.pdfPreview) {
     const canvas=document.createElement('canvas');
     const scale=900/Math.max(state.width,state.height);
@@ -81,6 +111,7 @@ async function photoArtwork(key,state,files,warnings,onProgress) {
       context.fillStyle='#666';context.font='24px Arial';context.textAlign='center';
       context.fillText(assetLabel(key)+' — photo missing',canvas.width/2,canvas.height/2);
     }
+    context.save();context.globalCompositeOperation='destination-over';context.fillStyle='#ffffff';context.fillRect(0,0,canvas.width,canvas.height);context.restore();
     try {const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.85));return new Uint8Array(await blob.arrayBuffer());}
     finally {canvas.width=canvas.height=1;}
   }
@@ -91,6 +122,7 @@ async function photoArtwork(key,state,files,warnings,onProgress) {
       warnings.push(...generated.warnings);
       if(generated.spec.ppi<TARGET_PPI) warnings.push(`Generated back cover: raster memory cap limits output to ${Math.floor(generated.spec.ppi)} PPI, not 300.`);
       onProgress('Generated back cover · encoding bounded RGB artwork and text…');
+      const ctx=generated.canvas.getContext('2d');ctx.save();ctx.globalCompositeOperation='destination-over';ctx.fillStyle='#ffffff';ctx.fillRect(0,0,generated.canvas.width,generated.canvas.height);ctx.restore();
       const blob=await new Promise((resolve,reject)=>generated.canvas.toBlob(value=>value?resolve(value):reject(new Error('Generated back cover encoding failed.')),'image/jpeg',JPEG_QUALITY));
       return new Uint8Array(await blob.arrayBuffer());
     } finally {if(generated)generated.canvas.width=generated.canvas.height=1;}
@@ -106,6 +138,7 @@ async function photoArtwork(key,state,files,warnings,onProgress) {
     if(availablePpi<Math.min(TARGET_PPI,spec.ppi)) warnings.push(`${assetLabel(key)}: original / bounded decode supplies ${Math.floor(availablePpi)} effective PPI; a ${spec.width} × ${spec.height} px print raster does not add detail.`);
     if(spec.ppi<TARGET_PPI) warnings.push(`${assetLabel(key)}: raster memory cap limits output to ${Math.floor(spec.ppi)} PPI (${spec.width} × ${spec.height} px), not 300.`);
     onProgress(`${assetLabel(key)} · encoding color photo…`);
+    const ctx=canvas.getContext('2d');ctx.save();ctx.globalCompositeOperation='destination-over';ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();
     const blob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Photo encoding failed.')),'image/jpeg',JPEG_QUALITY));
     return new Uint8Array(await blob.arrayBuffer());
   } finally {bitmap?.close();if(canvas)canvas.width=canvas.height=1;}
@@ -151,7 +184,7 @@ async function downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes) {
     {sheet:index+1,side:'A',pages:sheet.front,rotations:sheet.rotations},
     {sheet:index+1,side:'B',pages:sheet.reverse,rotations:sheet.rotations}
   ]);
-  const warnings=[],spreadState={...state,height:state.height*2},gridState={...readerState(state),bleed:0};
+  const warnings=[...(state.gridBackgroundWarnings??[])],spreadState={...state,height:state.height*2},gridState=readerState(state);
   if(check.gaps.length) warnings.push(`White-gap warning: ${check.gaps.map(assetLabel).join(', ')} do not cover the full reader page and bleed; uncovered areas were printed white.`);
   if(!boxes) warnings.push('PDF page-box API unavailable: explicit trim/fold marks and 0.25 in outer slug were used; no TrimBox/BleedBox metadata claimed.');
   const mediaWidth=state.width+2*state.bleed,mediaHeight=state.height*2+2*state.bleed;
@@ -167,8 +200,9 @@ async function downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes) {
       const jpeg=page.kind==='photo' ? await photoArtwork(page.key,state,files,warnings,onProgress) : null;
       saddlePanel(doc,state,panelIndex,side.rotations[panelIndex],slug,pdf=>{
         if(jpeg) pdf.addImage(jpeg,'JPEG',-state.bleed,-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed,undefined,'NONE');
-        else if(page.kind==='solid') {pdf.setFillColor(normalizeEndSpreadColor(state.endSpreadColor));pdf.rect(-state.bleed,-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed,'F');}
-        else if(page.kind==='grid') vectorGrid(pdf,gridState,page.month,0);
+        else if(page.kind==='solid'&&!(page.transparent??normalizeLayout(state.layout).endSpreadColorTransparent)) {pdf.setFillColor(page.color??normalizeEndSpreadColor(state.endSpreadColor));pdf.rect(-state.bleed,-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed,'F');}
+        // The panel transform is already at trim; do not add the bleed inset twice.
+        else if(page.kind==='grid') vectorGrid(pdf,gridState,page.month,-state.bleed);
       });
     }
     if(state.cropMarks||!boxes) saddleMarks(doc,state,slug,side,index);
@@ -182,9 +216,55 @@ async function downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes) {
   return {pages:plan.pdfPages,logicalPages:plan.logicalPages,physicalSheets:plan.physicalSheets,coverSheets:plan.coverSheets,interiorSheets:plan.interiorSheets,mediaWidth:mediaWidth+2*slug,mediaHeight:mediaHeight+2*slug,boxes,marks:state.cropMarks||!boxes,warnings};
 }
 
+/** Rasterize only grid lettering; shapes, rules and fills remain vector artwork. */
+async function prestoPhotoGrid(doc,state,month,warnings) {
+  const plan=vectorGrid(doc,state,month,0),spec=printRasterSpec(state);
+  const canvas=document.createElement('canvas');canvas.width=spec.width;canvas.height=spec.height;
+  try {
+    const context=canvas.getContext('2d',{colorSpace:'srgb'}),aw=state.width+2*state.bleed,ah=state.height+2*state.bleed;
+    context.scale(canvas.width/aw,canvas.height/ah);context.translate(state.bleed,state.bleed);
+    context.textBaseline='alphabetic';context.textAlign='left';
+    for(const item of plan.texts){context.font=canvasFont(item.font,item.size);context.fillStyle=item.color;context.fillText(item.text,item.x,item.y);}
+    const blob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('Grid text encoding failed.')),'image/png'));
+    doc.addImage(new Uint8Array(await blob.arrayBuffer()),'PNG',0,0,aw,ah,undefined,'FAST');
+    if(spec.ppi<TARGET_PPI)warnings.push(`${pageMonthLabel(month)} grid text: memory cap limits raster lettering to ${Math.floor(spec.ppi)} PPI.`);
+  } finally {canvas.width=canvas.height=1;}
+}
+const pageMonthLabel=month=>`Month ${month+1}`;
+
+/** Export reader pages, independently of local assembly binding and page-box support. */
+async function downloadPrestoPhotoPdf(state,files,onProgress,check,Constructor) {
+  const summary=prestoPhotoSummary(state),aw=summary.mediaWidth,ah=summary.mediaHeight;
+  await loadCalendarFonts();
+  const doc=new Constructor({...pageFormat(aw,ah),putOnlyUsedFonts:true});
+  configurePrestoPhotoPdf(doc);
+  const pages=printPages(state),warnings=[...summary.notices,...(state.gridBackgroundWarnings??[])];
+  if(check.low.length)warnings.push(`Below 300 PPI source detail: ${check.low.join(', ')}.`);
+  if(check.gaps.length)warnings.push(`White gaps: ${check.gaps.map(assetLabel).join(', ')}.`);
+  let boxes=false;
+  doc.setProperties({title:`${state.year} Photo Calendar — PrestoPhoto reader pages`,subject:`${pages.length} non-imposed pages; 0.125 in bleed per side; sRGB ICC default RGB; rasterized grid text; review vendor proof.`,creator:'Calendar Builder'});
+  for(let index=0;index<pages.length;index++) {
+    if(index)doc.addPage([aw,ah],aw>ah?'landscape':'portrait');
+    boxes=prestoPhotoPageBoxes(doc,state);
+    const page=pages[index];onProgress(`Rendering PrestoPhoto page ${index+1} / ${pages.length} · ${page.label}`);await breathe();
+    if(page.kind==='photo')await photoPage(doc,page.key,state,files,0,warnings,onProgress);
+    else if(page.kind==='solid'&&!(page.transparent??normalizeLayout(state.layout).endSpreadColorTransparent)){doc.setFillColor(page.color??normalizeEndSpreadColor(state.endSpreadColor));doc.rect(0,0,aw,ah,'F');}
+    else if(page.kind==='grid')await prestoPhotoGrid(doc,state,page.month,warnings);
+  }
+  if(!boxes)warnings.push('TrimBox/BleedBox API unavailable; media dimensions still include exactly 0.125 in bleed per side. No marks or slug were added.');
+  if(doc.getNumberOfPages()!==pages.length)throw new Error('Unexpected PrestoPhoto reader-page count.');
+  const blob=doc.output('blob'),filename=`photo-calendar-${state.year}-prestophoto-${pages.length}-pages.pdf`;
+  const result={...summary,blob,filename,boxes,warnings};
+  if(state.pdfPreview)return result;
+  const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=filename;document.body.append(anchor);
+  try{anchor.click();}finally{anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),URL_LIFETIME);}
+  return result;
+}
+
 /** Build the selected duplex assembly PDF from the shared reader page plan. */
 export async function downloadCalendarPdf(state,files,onProgress,{preview=false}={}) {
-  state={...state,pdfPreview:preview};
+  const prestoPhoto=normalizePdfExportTarget(state.pdfExportTarget)==='prestophoto';
+  state={...(prestoPhoto?prestoPhotoExportState(state):state),pdfPreview:preview};
   if(!preview&&!files) throw new Error('Local photo directory access is unavailable.');
   const Constructor=window.jspdf?.jsPDF;
   if(typeof Constructor!=='function') throw new Error('PDF dependency unavailable. Reopen the Proof with access to its approved jsPDF CDN script.');
@@ -192,19 +272,26 @@ export async function downloadCalendarPdf(state,files,onProgress,{preview=false}
   if(!preview&&!check.resizingAvailable) throw new Error('Pica 10.0.3 is unavailable. Photo assignment and PDF export require the approved Pica script.');
   if(check.pending) throw new Error('Wait for photo restoration / assignment / resizing to finish.');
   if(!preview&&!check.ready) throw new Error(`Missing photographs: ${check.missing.map(assetLabel).join(', ')}.`);
-  state=Object.freeze({...state});
+  state={...state};
   assets.beginExport();
   try {
+  const grants=preview?[]:await files.getGrants();
+  const denied=(preview?[]:requiredPhotoKeys(state)).filter(key=>!grants.some(grant=>grant.available&&grant.grantId===assets.get(key).metadata.grantId));
+  if(denied.length) throw new Error(`Folder permissions unavailable: ${denied.map(assetLabel).join(', ')}. Reselect and reassign these images.`);
+  if(normalizeLayout(state.layout).layoutBackgroundImage) {
+    const backgroundWarnings=[];
+    state.gridBackgroundJpeg=await photoArtwork('layout-background',readerState(state),files,backgroundWarnings,onProgress);
+    state.gridBackgroundWarnings=backgroundWarnings;
+  }
+  state=Object.freeze(state);
+  if(prestoPhoto) return await downloadPrestoPhotoPdf(state,files,onProgress,check,Constructor);
   const aw=state.width+2*state.bleed,ah=state.height+2*state.bleed;
   const pdfWidth=aw,pdfHeight=state.bindingStyle==='saddle'?state.height*2+2*state.bleed:ah;
   let doc=new Constructor(pageFormat(pdfWidth,pdfHeight));
   const boxes=Boolean(supportsBoxes(doc)),geometry=pdfSheetGeometry(state,boxes),marks=state.cropMarks||!boxes,slug=geometry.slug;
   if(slug) doc=new Constructor(pageFormat(pdfWidth+2*slug,pdfHeight+2*slug));
-  const grants=preview?[]:await files.getGrants();
-  const denied=(preview?[]:requiredPhotoKeys(state)).filter(key=>!grants.some(grant=>grant.available&&grant.grantId===assets.get(key).metadata.grantId));
-  if(denied.length) throw new Error(`Folder permissions unavailable: ${denied.map(assetLabel).join(', ')}. Reselect and reassign these images.`);
   if(state.bindingStyle==='saddle') return await downloadSaddlePdf(doc,state,files,onProgress,check,slug,boxes);
-  const pages=printPages(state),warnings=[];
+  const pages=printPages(state),warnings=[...(state.gridBackgroundWarnings??[])];
   if(check.gaps.length) warnings.push(`White-gap warning: ${check.gaps.map(assetLabel).join(', ')} do not cover the full page and bleed; uncovered areas were printed white.`);
   if(!boxes) warnings.push('PDF page-box API unavailable: explicit trim crop marks and 0.25 in outer slug were used; no TrimBox/BleedBox metadata claimed.');
   doc.setProperties({title:`${state.year} Photo Calendar — complete duplex layout`,subject:`${pages.length} pages in physical assembly order. Opening spread ${state.includeOpeningSpread!==false?'included':'omitted'}; closing spread ${state.includeClosingSpread!==false?'included':'omitted'}. Printer review required; RGB, not PDF/X or ICC-converted.`,creator:'Calendar Builder'});
@@ -214,7 +301,7 @@ export async function downloadCalendarPdf(state,files,onProgress,{preview=false}
     const page=pages[index];onProgress(`Rendering page ${index+1} / ${pages.length} · ${page.label}`);
     await breathe();
     if(page.kind==='photo') await photoPage(doc,page.key,state,files,slug,warnings,onProgress);
-    else if(page.kind==='solid') {doc.setFillColor(normalizeEndSpreadColor(state.endSpreadColor));doc.rect(slug,slug,aw,ah,'F');}
+    else if(page.kind==='solid'&&!(page.transparent??normalizeLayout(state.layout).endSpreadColorTransparent)) {doc.setFillColor(page.color??normalizeEndSpreadColor(state.endSpreadColor));doc.rect(slug,slug,aw,ah,'F');}
     else if(page.kind==='grid') vectorGrid(doc,state,page.month,slug);
     if(marks) cropMarks(doc,state,slug);
   }

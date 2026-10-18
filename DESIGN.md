@@ -43,11 +43,37 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 - Font-style controls are small borderless text buttons. Render R normally, B in bold, I in italic, and BI in bold italic; retain accessible style names, tooltips, and a clear selected state.
 - Layout modifier sections share the same accordion headings, row spacing, left-aligned labels and right-aligned controls. Typography uses consistent role cards with Font, Size / Color, Style and Align rows. Keep square color swatches and numeric fields the same size throughout; desktop controls are 34px and mobile controls are at least 44px. Flat calendar previews offer fit and zoom controls with scrollable inspection. Layout modifier and Back cover share the same zoom toolbar: minus, percentage, plus, and a visible Fit button, with identical spacing and mobile touch sizes.
 
-- Keep Auto-contrast holiday text on the Holiday names typography card. Keep the opening/closing spread color control and its shared blank-spread color help in Cell & grid colors.
+- Layout modifier keeps its flat calendar preview and zoom controls stationary above an independently scrollable settings area on desktop and phones. Reserve enough space for the settings; fit the preview to its available viewport height.
+
+- Month and year containers have independent horizontal and vertical padding in points. Grouped containers grow in width with padding; the header row reserves padded text height. Padding never changes the configured font size.
+
+- Month and year containers each have four independent corner radii and an option to round only their outer-facing ends. Their facing borders can inherit each container’s border, use a custom color/width, or be hidden. Apply these options to both separated and grouped headers and preserve older shared-radius settings.
+
+- Weekday headers support independent top-left, top-right, bottom-left and bottom-right radii, applied to every cell or only the row’s outer ends. Internal weekday borders have independent visibility, color and width. A continuous header band uses outer-only top corner rounding, square bottom corners and no internal borders, matching the printed-calendar reference.
+
+- Grid styling supports segmented lines with end gaps, optional outer boundaries, separate weekday fills and borders, rounded grid and individual cell corners, cell spacing, and a second outline optionally enclosing weekday headings. Month and year containers have independent fill, border and radius controls. Layout background offers a color or a dedicated image with the existing photo-folder and crop workflow; cell/header fills can be disabled to reveal it. Keep geometry shared between Canvas and vector PDF; export background photos from bounded original decoding with bleed.
+
+- Holiday labels wrap on word boundaries; never split words across lines. Keep configured sizes and report words that cannot fit. Offer top/bottom holiday placement independently of date alignment while reserving space between the two. Month and year can retain separate containers or form one left/center/right-aligned group with configurable point spacing; grouped containers follow their text widths.
+
+- Date-number shapes are optional calendar artwork: offer circle, diamond, star, oval, square and squircle fills with a color and point-size control. Follow date alignment, reserve space beside holiday labels, and use the same vector outlines in previews and PDF exports.
+
+- Organize Layout modifier by element: Month & year, Weekday headings, Date cells, Leading & trailing cells, Miniature calendars, Artwork details, Layout background, Page spacing, and Opening & closing spreads. Keep each element’s typography, colors, alignment and spacing together. Date cells include grid styling, date and holiday typography, padding, holiday spacing, and date-number shapes. Keep Auto-contrast holiday text on the Holiday names card; put the shared blank-spread color and help in Opening & closing spreads.
 
 - Back cover uses Dynamic and Image source tabs. Show only the selected source’s settings; image framing actions use icons with short text labels. Keep source images and dynamic settings when switching tabs.
 
+- Opening and closing filler spreads have four independent faces: opening top/bottom and closing top/bottom. Each can use its own color or a dedicated image with the standard photo-folder, restore and crop workflow. Unset colors inherit the shared fallback; required booklet padding remains separate.
+
+- Monthly artwork details have independent horizontal alignment (or inherited per-field alignment), top/middle/bottom block alignment, horizontal/vertical padding, an optional transparent background, border color/width and four corner radii. Align the whole text stack within its padded area without shrinking typography; preserve unstyled containers in older calendars.
+
+- Monthly artwork details can appear below the full month/year heading, below the month or year container, or at the page bottom. Reserve an adjustable text area, retain configured typography, and offer field visibility controls. Edit front-cover credits through Image picker; the generated back cover can include these as an optional card with or without the cover thumbnail. Its optional background image sits beneath cards and text and uses bounded original-file export.
+
 - Opening and closing blank spreads can be included independently. Keep both enabled for older saved calendars. Navigation, previews, sheet counts and PDF exports must follow the selection; identify any mandatory saddle-stitch padding separately. Reuse the checkboxes in mobile Setup.
+
+- Every layout background color offers an explicit Transparent option, including date/holiday/adjacent cells, month/year and weekday containers, date-number fills, full-layout and back-cover backgrounds/cards, filler faces and booklet fallback. Keep the selected color when toggling transparency. Skip transparent fill layers while retaining borders and text; Canvas and PDF should reveal underlying artwork. Empty page areas represent unprinted paper.
+
+- Assigning an optional layout background, back-cover background or filler image enables its corresponding image setting after the assignment succeeds. Restoration and crop edits must preserve an explicit disabled setting. Show the month spread after assigning its layout background; preserve configured cell and header fills.
+
+- Numeric fields preserve unfinished drafts while typing. Apply valid values live, enforce limits only on blur or Enter, and restore the last accepted value for empty or invalid drafts. Apply this consistently in document settings, Layout modifier and Back cover; keep validation in stored data and geometry.
 
 ## Local persistence
 

@@ -427,6 +427,42 @@ main,.printing-mode main{display:block;max-width:none}
 .back-image-framing fieldset{border:0;margin:0;padding:0;min-width:0}
 .back-image-framing legend{font-size:12px;font-weight:600;margin-bottom:8px;padding:0}
 
+/* Back-cover containers use the Layout modifier field and typography conventions. */
+#back-dynamic-settings{--back-control-height:34px}
+#back-dynamic-settings .back-control-section{padding:0 0 14px;min-width:0}
+#back-dynamic-settings .settings-group{border-bottom:1px solid var(--border);margin:0}
+#back-dynamic-settings .settings-group>summary{padding:14px 0;min-height:48px;font-size:13px;font-weight:600;text-align:left}
+#back-dynamic-settings .back-inspector-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 10px}
+#back-dynamic-settings .back-inspector-fields>label{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:10px;min-height:var(--back-control-height);margin:0;font-size:12px;text-align:left;padding:0;border:0}
+#back-dynamic-settings .back-inspector-fields .layout-control-label{color:var(--text-secondary);font-size:12px;letter-spacing:0;float:none;min-width:0}
+#back-dynamic-settings .back-inspector-fields input,#back-dynamic-settings .back-inspector-fields select{box-sizing:border-box;min-height:var(--back-control-height);height:var(--back-control-height);margin:0;padding:6px 8px;border-radius:7px;font-size:12px;min-width:0}
+#back-dynamic-settings .back-inspector-fields input[type=number]{width:80px;flex:0 0 80px;text-align:right;font-variant-numeric:tabular-nums}
+#back-dynamic-settings .back-inspector-fields input[type=color]{width:var(--back-control-height);flex:0 0 var(--back-control-height);padding:3px}
+#back-dynamic-settings .back-inspector-fields input[type=checkbox]{width:20px;height:20px;min-height:20px;accent-color:var(--accent)}
+#back-dynamic-settings .back-inspector-fields select,#back-dynamic-settings .back-inspector-fields input[type=text]{width:176px;max-width:60%;flex:0 1 176px}
+#back-dynamic-settings .layout-font-group{padding:12px;margin:0 0 10px;border:1px solid var(--border);border-radius:10px;min-width:0}
+#back-dynamic-settings .layout-font-group>legend{font-size:12px;font-weight:600;padding:0 5px;text-align:left}
+#back-dynamic-settings .back-font-styles{display:flex;gap:4px;justify-content:flex-end}
+#back-dynamic-settings .back-font-styles button{border:0;background:transparent;border-radius:999px;font-family:Georgia,'Times New Roman',serif;font-size:17px;min-width:34px;height:var(--back-control-height);padding:4px 8px}
+#back-dynamic-settings .back-font-styles .font-style-bold,#back-dynamic-settings .back-font-styles .font-style-bolditalic{font-weight:700}
+#back-dynamic-settings .back-font-styles .font-style-italic,#back-dynamic-settings .back-font-styles .font-style-bolditalic{font-style:italic}
+#back-dynamic-settings .back-font-styles button[aria-pressed=true]{background:var(--accent);color:var(--accent-text)}
+.back-object-menu,.back-object-actions{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.back-object-menu select{width:100%;min-width:0;margin:0;height:34px}
+.back-text-label{display:block;margin:10px 0;font-size:12px}
+.back-rich-text{display:block;width:100%;box-sizing:border-box;margin-top:8px;padding:10px;min-height:110px;resize:vertical;background:var(--surface);color:var(--text);border:1px solid var(--border-strong);border-radius:8px;font:14px Arial,Helvetica,sans-serif;white-space:pre-wrap}
+#back-cover-zoom-stage{position:relative}
+#back-cover-preview{touch-action:none}
+.back-transform-overlay{position:absolute;pointer-events:none;z-index:2}
+.back-transform-overlay[hidden]{display:none}
+.back-transform-box{position:absolute;box-sizing:border-box;border:1px solid var(--accent);outline:1px solid #fff8;pointer-events:auto;cursor:move;touch-action:none;background:transparent}
+.back-transform-box:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+#back-cover-panel .back-transform-handle{position:absolute;width:10px;height:10px;min-width:10px;min-height:10px;padding:0;border:1px solid var(--accent);border-radius:1px;background:var(--surface);transform:translate(-50%,-50%);touch-action:none}
+.back-handle-nw{left:0;top:0;cursor:nwse-resize}.back-handle-n{left:50%;top:0;cursor:ns-resize}.back-handle-ne{left:100%;top:0;cursor:nesw-resize}.back-handle-e{left:100%;top:50%;cursor:ew-resize}.back-handle-se{left:100%;top:100%;cursor:nwse-resize}.back-handle-s{left:50%;top:100%;cursor:ns-resize}.back-handle-sw{left:0;top:100%;cursor:nesw-resize}.back-handle-w{left:0;top:50%;cursor:ew-resize}
+#back-cover-panel .back-transform-handle::after{content:'';position:absolute;inset:-7px}
+#back-cover-panel .back-transform-handle:hover,#back-cover-panel .back-transform-handle:focus-visible{background:var(--accent)}
+@media(max-width:720px){#back-dynamic-settings{--back-control-height:44px}#back-dynamic-settings .back-inspector-fields input,#back-dynamic-settings .back-inspector-fields select,.back-object-menu select,.back-rich-text{font-size:16px}#back-dynamic-settings .back-font-styles button{min-width:44px}.back-object-menu select{height:44px}#back-cover-panel .back-transform-handle{width:14px;height:14px}#back-cover-panel .back-transform-handle::after{inset:-10px}}
+
 
 
 .viewer-materials>.stock-settings{position:relative;border:0;margin:0;flex-shrink:0}
@@ -502,3 +538,64 @@ main,.printing-mode main{display:block;max-width:none}
 @media(min-width:721px){
  #artwork-tabs{position:relative;contain:layout paint;height:calc(clamp(540px,74vh,1000px) + 140px);max-height:calc(clamp(540px,74vh,1000px) + 140px);min-height:0;overflow-y:auto;overscroll-behavior-y:contain}
 }
+
+/* Adjacent-month cells use the same compact label/control rows as grid settings. */
+#artwork-tabs .layout-adjacent-group{margin:12px 0 0;padding:8px 0;border:0;min-width:0}
+#artwork-tabs .layout-adjacent-group > .layout-field-grid{grid-template-columns:minmax(0,1fr)}
+#artwork-tabs .layout-adjacent-group > .layout-field-grid > label{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;margin:0;min-width:0}
+#artwork-tabs .layout-adjacent-group > .layout-field-grid select{width:170px;max-width:60%;margin:0}
+#artwork-tabs .layout-adjacent-group > .layout-field-grid input[type=color]{margin:0;flex-shrink:0}
+#artwork-tabs .layout-adjacent-group input:disabled{opacity:.45;cursor:default}
+
+#artwork-tabs .layout-adjacent-group > .layout-field-grid input[type=number]{width:64px;margin:0;flex-shrink:0}
+#artwork-tabs .layout-adjacent-group select:disabled{opacity:.45}
+
+#artwork-tabs .layout-font-group [data-field$=Vertical]{grid-column:1/-1;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px}
+#artwork-tabs .layout-font-group [data-field$=Vertical] select{width:110px;margin:0}
+
+/* Keep the layout preview stationary while its settings scroll below it. */
+#artwork-tabs:has(#layout-modifier-panel:not([hidden])){display:flex;flex-direction:column;overflow:hidden}
+#artwork-tabs:has(#layout-modifier-panel:not([hidden]))>.editor-tablist{flex:none;position:static}
+#layout-modifier-panel:not([hidden]){display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+#layout-modifier-panel .layout-editor-heading{flex:none;margin-top:8px}
+#artwork-tabs #layout-modifier-panel .layout-editor-workspace{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;gap:8px}
+#layout-modifier-panel .flat-preview{flex:none;margin:0}
+#layout-controls{flex:1;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable;padding:0 6px 8px 3px}
+#artwork-tabs #layout-zoom-viewport{height:clamp(160px,28vh,300px);min-height:0}
+@media(max-width:720px){
+  #artwork-tabs:has(#layout-modifier-panel:not([hidden])){height:calc(100svh - 210px - env(safe-area-inset-bottom));min-height:360px;max-height:none}
+  #artwork-tabs #layout-zoom-viewport{height:clamp(110px,23svh,220px)}
+  #layout-modifier-panel .flat-preview-heading{flex-direction:row;align-items:center;flex-wrap:wrap}
+  #layout-modifier-panel .flat-preview figcaption{margin:4px 0;font-size:11px}
+}
+
+/* Match Layout modifier at every breakpoint, not inside its mobile media query. */
+#artwork-tabs:has(#back-cover-panel:not([hidden])){display:flex;flex-direction:column;overflow:hidden}
+#artwork-tabs:has(#back-cover-panel:not([hidden]))>.editor-tablist{flex:none;position:static}
+#back-cover-panel:not([hidden]){display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+#back-cover-panel>.layout-editor-heading,#back-cover-panel>.editor-tablist,#back-cover-status{flex:none}
+#back-cover-panel>.layout-editor-heading{margin-top:8px}
+#back-cover-status{margin:4px 0}
+#artwork-tabs #back-cover-panel .layout-editor-workspace{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;gap:8px}
+#back-cover-panel .flat-preview{flex:none;margin:0}
+#back-cover-controls{position:relative;flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable;padding:0 6px 8px 3px}
+#artwork-tabs #back-cover-zoom-viewport{height:clamp(160px,28vh,300px);min-height:0}
+@media(max-width:720px){
+  #artwork-tabs:has(#back-cover-panel:not([hidden])){height:calc(100svh - 210px - env(safe-area-inset-bottom));min-height:360px;max-height:none}
+  #artwork-tabs #back-cover-panel .layout-editor-workspace{margin-top:8px}
+  #back-cover-panel .flat-preview{display:flex;flex-direction:column;min-height:0;max-height:50%}
+  #back-cover-panel .layout-zoom-toolbar{flex:none}
+  #artwork-tabs #back-cover-panel .back-cover-zoom-surface{display:flex;flex-direction:column;min-height:0;padding:6px}
+  #artwork-tabs #back-cover-zoom-viewport{height:clamp(80px,23svh,220px);min-height:0}
+}
+
+/* Element-based configuration keeps appearance and geometry together. */
+#layout-controls .layout-element-content{padding:0 0 14px;min-width:0}
+#layout-controls .layout-element-content>.layout-field-grid{margin:0 0 12px}
+#layout-controls .layout-element-spacing{padding-top:8px}
+#layout-controls .layout-element-content>.layout-adjacent-group{margin:0 0 12px;padding:10px;border:1px solid var(--border);border-radius:10px}
+#layout-controls .layout-element-content>.layout-adjacent-group>legend{font-size:12px;font-weight:600;padding:0 5px;color:var(--text)}
+
+#artwork-tabs .layout-image-picker{width:100%;min-height:34px;padding:7px 10px;border:1px solid var(--border-strong);border-radius:999px;background:var(--surface);color:var(--text);font-size:12px;box-shadow:none}
+#artwork-tabs .layout-image-picker:hover{background:var(--surface-soft)}
+@media(max-width:720px){#artwork-tabs .layout-image-picker{min-height:44px;font-size:14px}}

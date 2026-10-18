@@ -1,3 +1,5 @@
+import { activateAssignedArtwork } from './artwork-assignment.js';
+import { commitNumericOnBlur } from './numeric-input.js';
 import { createMobileWorkspace } from './mobile-workspace.js';
 let mobileWorkspace;
 import { readPreference, writePreference } from './browser-storage.js';
@@ -10,6 +12,7 @@ import { backCoverUsesImage, assets, printRasterSpec } from './media.js';
 import { createPhotoEditor } from './photo-editor.js';
 import { createBackCoverEditor, normalizeBackCover, backCoverStatus } from './back-cover.js';
 import { preflight, downloadCalendarPdf } from './pdf.js';
+import { normalizePdfExportTarget, prestoPhotoExportState, prestoPhotoSummary } from './prestophoto.js';
 import { normalizePrintColor, createPrintColorPanel, printColorSummary } from './print-color.js';
 import { normalizeHolidays, createHolidayPanel } from './holidays.js';
 await loadCalendarFonts();
@@ -17,7 +20,7 @@ const calendarScene = createCalendarScene(document.getElementById('three-scene')
 const STORAGE_KEY = 'calendar-layout-2027-39be18a4-712d-45cd-a061-f492bec78230:studio-v1';
 const LEGACY_STORAGE_KEY = 'calendar-layout-studio-v1';
 const STUDIO_LIGHTING_VERSION = 2;
-const DEFAULTS = {...PREVIEW_DEFAULTS,studioLightingVersion:STUDIO_LIGHTING_VERSION,year:2027,width:12,height:12,bleed:0.125,margin:0.5,binding:0.5,bindingStyle:'wire',week:0,guides:true,includeOpeningSpread:true,includeClosingSpread:true,month:0,endSpread:null,endSpreadColor:DEFAULT_END_SPREAD_COLOR,view:'spread',cropMarks:false,editorTab:'images',backCover:normalizeBackCover(),artworkMetadata:normalizeArtworkMetadata(),layout:normalizeLayout(),printColor:normalizePrintColor(),holidays:normalizeHolidays()};
+const DEFAULTS = {...PREVIEW_DEFAULTS,studioLightingVersion:STUDIO_LIGHTING_VERSION,year:2027,width:12,height:12,bleed:0.125,margin:0.5,binding:0.5,bindingStyle:'wire',week:0,guides:true,includeOpeningSpread:true,includeClosingSpread:true,month:0,endSpread:null,endSpreadColor:DEFAULT_END_SPREAD_COLOR,view:'spread',cropMarks:false,pdfExportTarget:'assembly',editorTab:'images',backCover:normalizeBackCover(),artworkMetadata:normalizeArtworkMetadata(),layout:normalizeLayout(),printColor:normalizePrintColor(),holidays:normalizeHolidays()};
 const LIMITS = {year:[1900,9999],width:[4,24],height:[4,24],bleed:[0,0.5],margin:[0.25,1.5],binding:[0.25,2],week:[0,1],month:[0,11]};
 // Preserve the active Proof's saved configuration as the standalone starting point.
 const EXPORTED_STATE = {previewClosed:false,paperGsm:170,coverGsm:250,paperFinish:'gloss',paperRoughness:0.43,bindingStyle:'saddle',guides:false,month:2,artworkMetadata:normalizeArtworkMetadata({'month-2':{artist:'Brenninetla',title:'Danger',description:'Cool Marin train called SMART attacking beachgoers'}}),layout:normalizeLayout({...DEFAULTS.layout,fonts:{...DEFAULTS.layout.fonts,title:{family:'times',size:58,style:'normal',align:'left',color:'#111111'},year:{family:'helvetica',size:30,style:'normal',align:'right',color:'#111111'},weekday:{family:'helvetica',size:16,style:'bold',align:'center',color:'#ff2600'},date:{family:'helvetica',size:22,style:'normal',align:'left',color:'#111111'},holiday:{family:'times',size:10,style:'normal',align:'left',color:'#ffffff'}}}),backCover:normalizeBackCover({...DEFAULTS.backCover,thumbnails:{...DEFAULTS.backCover.thumbnails,'month-2':{mode:'inherit',x:0.56,y:0.01,zoom:1.1}}}),printColor:normalizePrintColor({...DEFAULTS.printColor,paper:'coated',assumptions:{coated:{white:75,black:2,chroma:0},uncoated:{white:88,black:6,chroma:20}}}),holidays:normalizeHolidays({enabled:true,color:'#ff2600',removed:[],custom:[]})};
@@ -34,7 +37,7 @@ function migrateSavedState(saved) {
   if(!saved || typeof saved!=='object' || Array.isArray(saved)) return null;
   const upgradeDefault=(saved.studioLightingVersion??0)<STUDIO_LIGHTING_VERSION && saved.paperFinish==='matte' && saved.paperRoughness===0.90;
   const finish=upgradeDefault?PREVIEW_DEFAULTS.paperFinish:Object.hasOwn(PAPER_FINISHES,saved.paperFinish)?saved.paperFinish:PREVIEW_DEFAULTS.paperFinish;
-  return {...saved,includeOpeningSpread:saved.includeOpeningSpread!==false,includeClosingSpread:saved.includeClosingSpread!==false,artworkMetadata:normalizeArtworkMetadata(saved.artworkMetadata),endSpread:END_SPREADS.includes(saved.endSpread)&&calendarSelections(saved).includes(saved.endSpread)&&!saved.previewClosed?saved.endSpread:null,endSpreadColor:normalizeEndSpreadColor(saved.endSpreadColor),layout:normalizeLayout(saved.layout),editorTab:['images','layout','back-cover'].includes(saved.editorTab)?saved.editorTab:'images',backCover:normalizeBackCover(saved.backCover),holidays:normalizeHolidays(saved.holidays),printColor:normalizePrintColor(saved.printColor),studioLightingVersion:STUDIO_LIGHTING_VERSION,bindingStyle:saved.bindingStyle??'wire',view:saved.view==='covers'?'spread':saved.view,
+  return {...saved,pdfExportTarget:normalizePdfExportTarget(saved.pdfExportTarget),includeOpeningSpread:saved.includeOpeningSpread!==false,includeClosingSpread:saved.includeClosingSpread!==false,artworkMetadata:normalizeArtworkMetadata(saved.artworkMetadata),endSpread:END_SPREADS.includes(saved.endSpread)&&calendarSelections(saved).includes(saved.endSpread)&&!saved.previewClosed?saved.endSpread:null,endSpreadColor:normalizeEndSpreadColor(saved.endSpreadColor),layout:normalizeLayout(saved.layout),editorTab:['images','layout','back-cover'].includes(saved.editorTab)?saved.editorTab:'images',backCover:normalizeBackCover(saved.backCover),holidays:normalizeHolidays(saved.holidays),printColor:normalizePrintColor(saved.printColor),studioLightingVersion:STUDIO_LIGHTING_VERSION,bindingStyle:saved.bindingStyle??'wire',view:saved.view==='covers'?'spread':saved.view,
     previewClosed:typeof saved.previewClosed==='boolean'?saved.previewClosed:PREVIEW_DEFAULTS.previewClosed,
     paperGsm:PAPER_WEIGHTS.includes(saved.paperGsm)?saved.paperGsm:PREVIEW_DEFAULTS.paperGsm,
     coverGsm:PAPER_WEIGHTS.includes(saved.coverGsm)?saved.coverGsm:PREVIEW_DEFAULTS.coverGsm,
@@ -49,10 +52,12 @@ const photoEditor = createPhotoEditor(() => state, key => {
   state.view='spread';
   render();save();
 }, (key,metadata) => {
-  if(!/^month-(?:[0-9]|1[01])$/.test(key)) return;
+  if(key!=='front-cover'&&!/^month-(?:[0-9]|1[01])$/.test(key)) return;
   state.artworkMetadata=normalizeArtworkMetadata({...state.artworkMetadata,[key]:metadata});
   // Regenerate only back artwork while typing; do not rebuild the active photo editor.
-  backCoverEditor.render();calendarScene.update(state);save();
+  backCoverEditor.render();layoutEditor.render();calendarScene.update(state);save();
+},key=>{
+  state=activateAssignedArtwork(state,key);render();save();
 });
 const backCoverEditor = createBackCoverEditor(() => state, settings => {state.backCover=normalizeBackCover(settings);backCoverEditor.render();calendarScene.update(state);updatePreflight();save();}, () => busy);
 const printColorPanel = createPrintColorPanel(() => state, settings => {
@@ -65,7 +70,7 @@ function previewSummary() {
 }
 function snapshot() {
   const check=preflight(state),saddle=state.bindingStyle==='saddle',plan=calendarPagePlan(state);
-  return {...state,artworkMetadata:normalizeArtworkMetadata(state.artworkMetadata),artworkText:{displayed:!backCoverUsesImage(state),printed:!backCoverUsesImage(state),location:'generated-back-cover-only',typographyRoles:[...ARTWORK_FONT_ROLES],metadataLimits:{...ARTWORK_METADATA_LIMITS}},backCover:normalizeBackCover(state.backCover),backCoverStatus:backCoverStatus(state),endSpreadColor:normalizeEndSpreadColor(state.endSpreadColor),selection:calendarSelection(state),layout:normalizeLayout(state.layout),layoutPreview:layoutEditor.summary(),printColor:{...printColorSummary(state),analysis:printColorPanel.summary()},preview:previewSummary(),interiorSheets:plan.interiorSheets,coverSheets:plan.coverSheets,physicalSheets:plan.physicalSheets,readerPage:{width:state.width,height:state.height},openSpread:{width:state.width,height:state.height*2},logicalPages:plan.logicalPages,paddingPages:plan.paddingPages,printSequence:sequence(),assets:assets.metadata(),preflight:{missing:check.missing,requiredPhotos:check.required,backCoverMode:check.backCoverMode,lowResolution:check.low,whiteGaps:check.gaps,pending:check.pending,ready:check.ready},pdf:{pages:plan.pdfPages,trimWidth:state.width,trimHeight:saddle?state.height*2:state.height,bleedWidth:state.width+2*state.bleed,bleedHeight:(saddle?state.height*2:state.height)+2*state.bleed,colorSpace:'RGB',printerReviewRequired:true}};
+  return {...state,artworkMetadata:normalizeArtworkMetadata(state.artworkMetadata),artworkText:{displayed:!backCoverUsesImage(state)||state.layout.artworkPlacement!=='none',printed:!backCoverUsesImage(state)||state.layout.artworkPlacement!=='none',monthlyPlacement:state.layout.artworkPlacement,location:'configured-month-pages-and-generated-back-cover',typographyRoles:[...ARTWORK_FONT_ROLES],metadataLimits:{...ARTWORK_METADATA_LIMITS}},backCover:normalizeBackCover(state.backCover),backCoverStatus:backCoverStatus(state),endSpreadColor:normalizeEndSpreadColor(state.endSpreadColor),selection:calendarSelection(state),layout:normalizeLayout(state.layout),layoutPreview:layoutEditor.summary(),printColor:{...printColorSummary(state),analysis:printColorPanel.summary()},preview:previewSummary(),interiorSheets:plan.interiorSheets,coverSheets:plan.coverSheets,physicalSheets:plan.physicalSheets,readerPage:{width:state.width,height:state.height},openSpread:{width:state.width,height:state.height*2},logicalPages:plan.logicalPages,paddingPages:plan.paddingPages,printSequence:sequence(),assets:assets.metadata(),preflight:{missing:check.missing,requiredPhotos:check.required,backCoverMode:check.backCoverMode,lowResolution:check.low,whiteGaps:check.gaps,pending:check.pending,ready:check.ready},pdf:state.pdfExportTarget==='prestophoto'?{...prestoPhotoSummary(state),exportTarget:'prestophoto',printerReviewRequired:true}:{pages:plan.pdfPages,trimWidth:state.width,trimHeight:saddle?state.height*2:state.height,bleedWidth:state.width+2*state.bleed,bleedHeight:(saddle?state.height*2:state.height)+2*state.bleed,colorSpace:'RGB',printerReviewRequired:true}};
 }
 function save() {
   try {localStorage.setItem(STORAGE_KEY,JSON.stringify(state));} catch {window.dispatchEvent(new CustomEvent('calendar-storage-error'));}
@@ -85,10 +90,23 @@ function sequence() {
   return sheets;
 }
 function updatePreflight() {
-  const check=preflight(state),invalid=Boolean(document.querySelector('[aria-invalid="true"]'));
+  const presto=state.pdfExportTarget==='prestophoto',output=presto?prestoPhotoExportState(state):state;
+  const check=preflight(output),invalid=Boolean(document.querySelector('[aria-invalid="true"]'));
+  const upload=presto?prestoPhotoSummary(state):null;
+  byId('pdf-export-target').value=normalizePdfExportTarget(state.pdfExportTarget);
+  byId('prestophoto-export-note').hidden=!presto;
+  byId('crop-marks').disabled=presto||busy||Boolean(assets.pending);
   const aw=state.width+2*state.bleed,ah=state.height*(state.bindingStyle==='saddle'?2:1)+2*state.bleed,slug=pdfSheetGeometry(state).slug;
   byId('pdf-size').textContent=`MediaBox ${format(aw+2*slug)} × ${format(ah+2*slug)} in · ${state.bindingStyle==='saddle'?`folded-sheet trim ${format(state.width)} × ${format(state.height*2)} in · closed reader page ${format(state.width)} × ${format(state.height)} in`:`trim ${format(state.width)} × ${format(state.height)} in`} · exterior bleed ${format(state.bleed)} in. TrimBox/BleedBox, when supported, describe the ${state.bindingStyle==='saddle'?'whole folded sheet':'page'}; otherwise crop/fold marks use a 0.25 in exterior slug.`;
   const messages=[];
+  if(upload){
+    byId('pdf-size').textContent=`PrestoPhoto upload ${format(upload.mediaWidth)} × ${format(upload.mediaHeight)} in · trim ${format(upload.width)} × ${format(upload.height)} in · ${upload.pages} reader-order pages · 0.125 in bleed per edge · no marks or exterior slug · PDF 1.5 / sRGB.`;
+    byId('pdf-title').textContent='PrestoPhoto calendar PDF';
+    byId('pdf-description').textContent=`${upload.pages} individual reader pages · front cover first, back cover last · no booklet imposition · sRGB with embedded color profile · 300 PPI target. Grid lettering is rasterized with your selected fonts; artwork shapes remain vector. SWOP preview is not applied to export.`;
+    byId('download-pdf').textContent=`Download PrestoPhoto PDF · ${upload.pages} pages`;
+    byId('pdf-footnote').textContent='PrestoPhoto upload preset: individual reader pages, not the assembly map’s imposed sheets. Upload as a calendar, review cover selection and every page in the vendor proof before ordering.';
+    messages.push(...upload.notices);
+  }
   if(check.pending) messages.push(`Photo restoration / assignment / Pica resizing in progress (${check.pending} operations). Wait before exporting.`);
   if(invalid) messages.push('Correct invalid document settings before exporting.');
    const layoutWarnings=layoutEditor.summary().notices;
@@ -196,8 +214,8 @@ function render() {
   byId('pdf-description').textContent=`${plan.pdfPages} ${saddle?'imposed sides':'pages in physical assembly order'} · ${plan.physicalSheets} ${saddle?'folded ':''}sheets · vector grids and full-size photo crops. ${endDescription}${padding} RGB, not PDF/X or ICC-converted; printer review required.`;
   byId('download-pdf').textContent=saddle?`Download saddle PDF · ${plan.pdfPages} sides`:`Download complete PDF · ${plan.pdfPages} pages`;
   byId('pdf-footnote').textContent=saddle?'Already imposed TOP/BOTTOM sheet sides; crop/fold marks, when enabled, are outside the artwork in the slug. Proof the duplex, horizontal fold and upright photo/grid pairs before production. RGB, not PDF/X-certified or ICC-converted.':'The download is a full print-layout PDF, not imposed, PDF/X-certified, or ICC-converted. Review and proof it with your printer before production.';
-  byId('three-scene').setAttribute('aria-label',state.previewClosed?`Fully closed ${format(width)} by ${format(height)} inch ${saddle?'top-bound saddle':'wire/coil'} calendar. Front exterior photo; drag to inspect the back exterior and stock edges. Scroll or pinch to zoom.`:state.endSpread?`${selectionLabel} spread: both full-page halves are solid ${normalizeEndSpreadColor(state.endSpreadColor)}, with no photo or date grid. ${saddle?'Horizontal saddle fold':'Top-edge wire/coil binding'}. Drag to rotate; scroll or pinch to zoom.`:saddle?`Interactive 3D top-bound saddle calendar: full photo above a horizontal centerfold, full grid below, ${plan.physicalSheets} folded sheets and staples. Drag to rotate; scroll or pinch to zoom.`:'Interactive 3D top-bound wire/coil calendar. Drag to rotate; scroll or pinch to zoom.');
-  byId('viewer-bottom').firstElementChild.textContent=state.previewClosed?'Closed · drag for back / underside · scroll/pinch to zoom':saddle?'Horizontal saddle seam · drag to orbit · scroll/pinch to zoom':'Wire / coil · top-edge binding · drag to rotate';
+  byId('three-scene').setAttribute('aria-label',state.previewClosed?`Fully closed ${format(width)} by ${format(height)} inch ${saddle?'top-bound saddle':'wire/coil'} calendar. Front exterior photo; drag to inspect the back exterior and stock edges. Scroll or pinch to zoom.`:state.endSpread?`${selectionLabel} spread: top and bottom pages use their independently configured image or color. ${saddle?'Horizontal saddle fold':'Top-edge wire/coil binding'}. Drag to rotate; scroll or pinch to zoom.`:saddle?`Interactive 3D top-bound saddle calendar: full photo above a horizontal centerfold, full grid below, ${plan.physicalSheets} folded sheets and staples. Drag to rotate; scroll or pinch to zoom.`:'Interactive 3D top-bound wire/coil calendar. Drag to rotate; scroll or pinch to zoom.');
+  byId('viewer-bottom').firstElementChild.textContent=(state.previewClosed?'Closed · drag for back / underside · scroll/pinch to zoom':saddle?'Horizontal saddle seam · drag to orbit · scroll/pinch to zoom':'Wire / coil · top-edge binding · drag to rotate · scroll/pinch to zoom')+' · Shift + drag to move';
 
   byId('print-rows').replaceChildren(...sequence().map(sheet=>{
     const row=document.createElement('tr');if(sheet.cover) row.className='cover-row';
@@ -212,6 +230,7 @@ for(const key of ['year','width','height','bleed','margin','binding','week']) {
     if(!valid(candidate)) {byId('error').textContent='Enter values within the shown limits. The safe and binding margins must fit inside the page; the year must be a whole number.';input.setAttribute('aria-invalid','true');updatePreflight();return;}
     state=candidate;byId('error').textContent='';input.removeAttribute('aria-invalid');render();save();
   });
+  if(byId(key).type==='number') commitNumericOnBlur(byId(key),...LIMITS[key],()=>state[key],{integer:key==='year'});
 }
 for(const [id,key] of [['include-opening-spread','includeOpeningSpread'],['include-closing-spread','includeClosingSpread']]) {
   byId(id).addEventListener('change',()=>{state[key]=byId(id).checked;render();save();});
@@ -251,12 +270,13 @@ byId('three-scene').addEventListener('calendar-month-change',event=>{
 });
 photoEditor.setTarget(state.previewClosed?'front-cover':`month-${state.month}`);
 syncInputs();render();save();
-const specificationControls = ['reset-layout','image-picker-tab','layout-modifier-tab','back-cover-tab','back-cover-upload','back-cover-remove','back-cover-fill','back-cover-fit',...[...document.querySelectorAll('[data-back-control]')].map(control=>control.id),...[...document.querySelectorAll('[data-layout-control]')].map(control=>control.id),'year','width','height','bleed','margin','binding','binding-style','week','include-opening-spread','include-closing-spread','crop-marks','paper-gsm','cover-gsm','paper-finish','paper-roughness','print-color-target','print-color-paper','print-color-artwork','print-color-compare','print-color-3d','print-color-white','print-color-black','print-color-chroma','print-color-reset'];
+const specificationControls = ['reset-layout','image-picker-tab','layout-modifier-tab','back-cover-tab','back-cover-upload','back-cover-remove','back-cover-fill','back-cover-fit',...[...document.querySelectorAll('[data-back-control]')].map(control=>control.id),...[...document.querySelectorAll('[data-layout-control]')].map(control=>control.id),'year','width','height','bleed','margin','binding','binding-style','week','include-opening-spread','include-closing-spread','pdf-export-target','crop-marks','paper-gsm','cover-gsm','paper-finish','paper-roughness','print-color-target','print-color-paper','print-color-artwork','print-color-compare','print-color-3d','print-color-white','print-color-black','print-color-chroma','print-color-reset'];
 const pendingDisabledBefore = new Map();
 function syncPreparationLock() {
   if (assets.pending) {
     for (const id of specificationControls) {
       const control=byId(id);
+      if (!control) continue;
       if (!pendingDisabledBefore.has(control)) pendingDisabledBefore.set(control,control.disabled);
       control.disabled=true;
     }
@@ -265,10 +285,13 @@ function syncPreparationLock() {
     pendingDisabledBefore.clear();
   }
 }
-assets.subscribe(()=>{syncPreparationLock();if(busy){updatePreflight();return;}calendarScene.update(state);renderAssets();save();});
+assets.subscribe(()=>{syncPreparationLock();if(busy){updatePreflight();return;}calendarScene.update(state);layoutEditor.render();renderAssets();save();});
 for(const type of ['click','input','change','pointerdown','pointermove','wheel','keydown']) document.addEventListener(type,event=>{
-  if((busy || assets.pending) && event.target instanceof Element && event.target.closest('main')) {event.preventDefault();event.stopImmediatePropagation();}
+  // Lock export mutations, not modal dismissal or unrelated navigation. Preparation
+  // already disables its specification controls and the photo editor locally.
+  if(busy && event.target instanceof Element && event.target.closest('main') && !event.target.closest('dialog')) {event.preventDefault();event.stopImmediatePropagation();}
 },{capture:true,passive:false});
+byId('pdf-export-target').addEventListener('change',()=>{state.pdfExportTarget=normalizePdfExportTarget(byId('pdf-export-target').value);render();save();});
 byId('crop-marks').addEventListener('change',()=>{state.cropMarks=byId('crop-marks').checked;updatePreflight();save();});
 let previewUrl;
 const closePreview=()=>{byId('pdf-preview-dialog').close();byId('pdf-preview-frame').src='about:blank';if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=null;};
@@ -277,15 +300,15 @@ byId('pdf-preview-dialog').addEventListener('cancel',event=>{event.preventDefaul
 for(const action of ['preview-pdf','download-pdf']) byId(action).addEventListener('click',async()=>{
   const preview=action==='preview-pdf';
   if(busy || assets.pending || (!preview&&!preflight(state).ready) || document.querySelector('[aria-invalid="true"]')) return;
-  photoEditor.setBusy(true);
+  // Snapshot before setBusy renders its own disabled state. Never disable dialog
+  // close buttons: an already open preview must remain dismissible during export.
+  const disabledBefore=new Map([...document.querySelectorAll('main button,main input,main select,main textarea')].filter(control=>!control.closest('dialog')).map(control=>[control,control.disabled]));
   busy=true;
-
-
-  const disabledBefore=new Map([...document.querySelectorAll('button,input,select,textarea')].map(control=>[control,control.disabled]));
-  disabledBefore.forEach((_,control)=>{control.disabled=true;});
-  document.body.classList.add('exporting');
-  byId('pdf-progress').textContent='Checking photos and folder permissions…';
   try {
+    photoEditor.setBusy(true);
+    disabledBefore.forEach((_,control)=>{control.disabled=true;});
+    document.body.classList.add('exporting');
+    byId('pdf-progress').textContent='Checking photos and folder permissions…';
     const result=await downloadCalendarPdf({...state},photoEditor.files,text=>{byId('pdf-progress').textContent=text;},{preview});
     if(preview){
       if(previewUrl)URL.revokeObjectURL(previewUrl);
@@ -300,8 +323,10 @@ for(const action of ['preview-pdf','download-pdf']) byId(action).addEventListene
   } catch(error) {byId('pdf-progress').textContent=`Export failed: ${error.message}`;}
   finally {
     busy=false;document.body.classList.remove('exporting');
-    disabledBefore.forEach((disabled,control)=>{if(control.isConnected) control.disabled=disabled;});
-    photoEditor.setBusy(false);render();
+    // A rendering failure must not strand the DOM in its export-disabled state.
+    try {photoEditor.setBusy(false);render();}
+    catch(error) {byId('pdf-progress').textContent=`Could not refresh after export: ${error.message}`;}
+    finally {disabledBefore.forEach((disabled,control)=>{if(control.isConnected) control.disabled=disabled;});}
   }
 });
 photoEditor.restore().then(()=>backCoverEditor.restore());

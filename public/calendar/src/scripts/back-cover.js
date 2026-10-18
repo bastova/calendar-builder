@@ -1,6 +1,10 @@
+import { numericDraft as readNumericDraft, commitNumericOnBlur } from './numeric-input.js';
+import { normalizeBackStyle, normalizeBackFont, normalizeBackObjects, normalizeBackRect, transformBackRect, backContentRect, backImageKey, backObjectImageMapping } from './back-cover-model.js';
+import { backContainerPath, drawBackContainer, drawBackObject, drawBackRichText, backTextLines } from './back-cover-render.js';
+import { createBackCoverControls } from './back-cover-controls.js';
 import { readPreference, writePreference } from './browser-storage.js';
 import { MONTHS, normalizeLayout, normalizeArtworkMetadata, canvasFont, readerState } from './layout.js';
-import { backCoverUsesImage, assets, FILE_LIMIT, isPhotoEntry, safeRelativePath, drawPhoto, printRasterSpec, CENTER_CROP, cropForPlacement, photoPlacement, picaAvailable, resizeImageBitmapToCanvas } from './media.js';
+import { backCoverUsesImage, assets, FILE_LIMIT, isPhotoEntry, safeRelativePath, drawPhoto, printRasterSpec, printPhotoCanvas, CENTER_CROP, cropForPlacement, photoPlacement, picaAvailable, resizeImageBitmapToCanvas } from './media.js';
 
 const BACK_PREVIEW_MAX_EDGE = 4096;
 const BACK_PREVIEW_MAX_PIXELS = 16 * 1024 * 1024;
@@ -20,7 +24,7 @@ const MINI_MAX_PIXELS = 20 * 1024 * 1024;
 const CROP_MODES = ['monthly','fill','fit'];
 const NUMBER_FIELDS = Object.freeze({columns:[1,6],marginTop:[0,12],marginRight:[0,12],marginBottom:[0,12],marginLeft:[0,12],gapX:[0,2],gapY:[0,2],padding:[0,1],imageShare:[.15,.85]});
 const THUMBNAIL_DEFAULTS = Object.freeze({mode:'inherit',x:.5,y:.5,zoom:1});
-export const BACK_COVER_DEFAULTS = Object.freeze({version:2,columns:3,marginTop:.5,marginRight:.5,marginBottom:.5,marginLeft:.5,gapX:.15,gapY:.15,padding:.06,placement:'top',imageShare:.62,alignX:'center',alignY:'top',cropMode:'monthly',background:'#ffffff',cellBackground:'#f5f5f5',cellFill:false});
+export const BACK_COVER_DEFAULTS = Object.freeze({version:3,backgroundTransparent:false,cellBackgroundTransparent:false,frontCoverCredits:false,frontCoverImage:true,backgroundImage:false,columns:3,marginTop:.5,marginRight:.5,marginBottom:.5,marginLeft:.5,gapX:.15,gapY:.15,padding:.06,placement:'top',imageShare:.62,alignX:'center',alignY:'top',cropMode:'monthly',background:'#ffffff',cellBackground:'#f5f5f5',cellFill:false});
 const byId = id => document.getElementById(id);
 const bounded = (value,fallback,min,max) => Number.isFinite(value)?Math.max(min,Math.min(max,value)):fallback;
 const validColor = (value,fallback) => typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value)?value:fallback;
@@ -36,19 +40,28 @@ export function normalizeBackCover(value) {
   for(const key of ['background','cellBackground'])result[key]=validColor(value?.[key],BACK_COVER_DEFAULTS[key]);
   result.mode=['dynamic','image'].includes(value?.mode)?value.mode:'auto';
   result.cellFill=value?.cellFill===true;
+  result.backgroundTransparent=value?.backgroundTransparent===true;result.cellBackgroundTransparent=value?.cellBackgroundTransparent===true;
+  result.frontCoverCredits=value?.frontCoverCredits===true;result.frontCoverImage=value?.frontCoverImage!==false;result.backgroundImage=value?.backgroundImage===true;
   MONTHS.forEach((_,month)=>{const key=`month-${month}`,source=value?.thumbnails?.[key];result.thumbnails[key]={mode:['inherit',...CROP_MODES].includes(source?.mode)?source.mode:THUMBNAIL_DEFAULTS.mode,x:bounded(source?.x,.5,0,1),y:bounded(source?.y,.5,0,1),zoom:bounded(source?.zoom,1,1,THUMBNAIL_ZOOM_MAX)};});
+  result.thumbnails['front-cover']={mode:'monthly',x:.5,y:.5,zoom:1};
+  result.version=3;
+  result.grid=value?.grid&&typeof value.grid==='object'?normalizeBackRect(value.grid):null;
+  result.detailsStyle=normalizeBackStyle(value?.detailsStyle,{...normalizeBackStyle(),vertical:result.alignY});
+  result.imageStyle=normalizeBackStyle(value?.imageStyle,{...normalizeBackStyle(),vertical:'inherit'});
+  result.detailsFonts=Object.fromEntries(['artist','artworkTitle','description'].map(role=>[role,value?.detailsFonts?.[role]&&typeof value.detailsFonts[role]==='object'?normalizeBackFont(value.detailsFonts[role]):null]));
+  result.objects=normalizeBackObjects(value?.objects);
   return result;
 }
 
 /** Describe derived mode, effective geometry and constraints without discarding unavailable uploads. */
 export function backCoverStatus(state) {
   const record=backCoverUsesImage(state)?assets.get('back-cover'):null,missing=MONTHS.flatMap((_,month)=>assets.get(`month-${month}`)?.bitmap?[]:[MONTHS[month]]),plan=backCoverPlan(state);
-  return {mode:backCoverUsesImage(state)?'uploaded':'generated',uploadedAvailable:Boolean(record?.bitmap),missingMonths:missing,ready:backCoverUsesImage(state)?Boolean(record?.bitmap):missing.length===0,settings:plan.settings,effective:plan.effective,notices:plan.notices,textPrinted:!backCoverUsesImage(state),thumbnailCropsIndependent:true,chronologicalMonths:MONTHS,raster:printRasterSpec(state)};
+  return {mode:backCoverUsesImage(state)?'uploaded':'generated',uploadedAvailable:Boolean(record?.bitmap),missingMonths:missing,ready:backCoverUsesImage(state)?Boolean(record?.bitmap):missing.length===0&&(!plan.settings.backgroundImage||Boolean(assets.get('back-cover-background')?.bitmap))&&(!plan.settings.frontCoverCredits||!plan.settings.frontCoverImage||Boolean(assets.get('front-cover')?.bitmap))&&plan.settings.objects.filter(object=>object.type==='image').every(object=>Boolean(assets.get(backImageKey(object.id))?.bitmap)),settings:plan.settings,effective:plan.effective,notices:plan.notices,textPrinted:!backCoverUsesImage(state),thumbnailCropsIndependent:true,chronologicalMonths:MONTHS,raster:printRasterSpec(state)};
 }
 
 /** Keep all twelve chronological cards disjoint, even with extreme page shapes and requested spacing. */
 export function backCoverPlan(state) {
-  const settings=normalizeBackCover(state.backCover),columns=settings.columns,rows=Math.ceil(MONTH_COUNT/columns),notices=[];
+  const settings=normalizeBackCover(state.backCover),columns=settings.columns,rows=Math.ceil((MONTH_COUNT+(settings.frontCoverCredits?1:0))/columns),notices=[];
   const safe={left:state.margin,right:state.margin,top:Math.max(state.margin,readerState(state).binding),bottom:state.margin};
   const margins={};
   for(const side of ['left','right','top','bottom']) {const key=`margin${side[0].toUpperCase()}${side.slice(1)}`;margins[side]=Math.max(safe[side],settings[key]);if(settings[key]<safe[side])notices.push(`${side} margin raised to the ${safe[side].toFixed(2)} in print-safe / binding floor.`);}
@@ -67,23 +80,38 @@ export function backCoverPlan(state) {
   const photoWidth=horizontal?(innerWidth-contentGap)*settings.imageShare:innerWidth,photoHeight=horizontal?bodyHeight-contentGap:(bodyHeight-contentGap)*settings.imageShare;
   const textWidth=horizontal?innerWidth-contentGap-photoWidth:innerWidth,textHeight=horizontal?photoHeight:bodyHeight-contentGap-photoHeight;
   const metadata=normalizeArtworkMetadata(state.artworkMetadata),fonts=normalizeLayout(state.layout).fonts;
-  const cards=MONTHS.map((name,month)=>{
-    const x=margins.left+(month%columns)*(cardWidth+gapX),y=margins.top+Math.floor(month/columns)*(cardHeight+gapY),bodyX=x+padding,bodyY=y+padding+labelHeight;
+  const entries=[...(settings.frontCoverCredits?[{key:'front-cover',name:'Front cover',month:null}]:[]),...MONTHS.map((name,month)=>({key:`month-${month}`,name,month}))];
+  const cards=entries.map(({key,name,month},index)=>{
+    const x=margins.left+(index%columns)*(cardWidth+gapX),y=margins.top+Math.floor(index/columns)*(cardHeight+gapY),bodyX=x+padding,bodyY=y+padding+labelHeight;
     const photo={x:bodyX,y:bodyY,width:photoWidth,height:photoHeight},text={x:bodyX,y:bodyY,width:textWidth,height:textHeight};
     if(settings.placement==='left')text.x+=photoWidth+contentGap;
     if(settings.placement==='right')photo.x+=textWidth+contentGap;
     if(settings.placement==='top')text.y+=photoHeight+contentGap;
     if(settings.placement==='bottom')photo.y+=textHeight+contentGap;
-    return {key:`month-${month}`,month,name,x,y,width:cardWidth,height:cardHeight,padding,labelHeight,label:{x:bodyX,y:y+padding,width:innerWidth,height:labelHeight},photo,text,metadata:metadata[`month-${month}`],thumbnail:settings.thumbnails[`month-${month}`]};
+    const imageVisible=key!=='front-cover'||settings.frontCoverImage;
+    if(!imageVisible)Object.assign(text,{x:bodyX,y:bodyY,width:innerWidth,height:bodyHeight});
+    return {key,month,name,x,y,width:cardWidth,height:cardHeight,padding,labelHeight,label:{x:bodyX,y:y+padding,width:innerWidth,height:labelHeight},photo,text,imageVisible,metadata:metadata[key],thumbnail:settings.thumbnails[key]};
   });
-  if(photoWidth<.25||photoHeight<.25||textWidth<.3||textHeight<.25)notices.push('Very small image or caption area: choose fewer columns, smaller margins/gaps, or a different image position/proportion. Text still fits and clips within its own box.');
-  return {settings,fonts,cards,notices,effective:{columns,rows,margins,gapX,gapY,padding,cardWidth,cardHeight,photoWidth,photoHeight,textWidth,textHeight}};
+  const automaticGrid={x:margins.left,y:margins.top,width:usableWidth,height:usableHeight,aspectLocked:true},grid=settings.grid??automaticGrid;
+  if(settings.grid)for(const card of cards) {
+    Object.assign(card,transformBackRect(card,automaticGrid,grid));
+    for(const key of ['label','photo','text'])card[key]=transformBackRect(card[key],automaticGrid,grid);
+    card.padding*=Math.min(grid.width/automaticGrid.width,grid.height/automaticGrid.height);
+  }
+  for(const card of cards) {
+    card.photoFrame={...card.photo};card.textFrame={...card.text};
+    card.photo=backContentRect(card.photoFrame,settings.imageStyle);card.text=backContentRect(card.textFrame,settings.detailsStyle);
+  }
+  for(const role of ['artist','artworkTitle','description'])if(settings.detailsFonts[role])fonts[role]=settings.detailsFonts[role];
+  if(photoWidth<.25||photoHeight<.25||textWidth<.3||textHeight<.25)notices.push('Small image or caption area: text keeps its configured size and clips at the container.');
+  if(grid.x<0||grid.y<0||grid.x+grid.width>state.width||grid.y+grid.height>state.height)notices.push('Monthly grid extends beyond the trim; artwork outside the page is clipped.');
+  return {settings,fonts,cards,grid,automaticGrid,notices,effective:{columns,rows,margins,gapX,gapY,padding,cardWidth,cardHeight,photoWidth,photoHeight,textWidth,textHeight}};
 }
 
 /** Exact original-source placement used for both screen draw and original-file export sampling. */
 export function backThumbnailMapping(state,card,metadata,settings=normalizeBackCover(state.backCover)) {
   const thumbnail=card.thumbnail,mode=thumbnail.mode==='inherit'?settings.cropMode:thumbnail.mode,box=card.photo;
-  const anchorX=frameAnchor(thumbnail.x,positionFraction(settings.alignX,'x')),anchorY=frameAnchor(thumbnail.y,positionFraction(settings.alignY,'y'));
+  const anchorX=frameAnchor(thumbnail.x,positionFraction(settings.imageStyle.align==='inherit'?settings.alignX:settings.imageStyle.align,'x')),anchorY=frameAnchor(thumbnail.y,positionFraction(settings.imageStyle.vertical==='inherit'?settings.alignY:settings.imageStyle.vertical,'y'));
   let placement,clip={x:0,y:0,width:box.width,height:box.height};
   if(mode==='monthly') {
     const factor=Math.min(box.width/state.width,box.height/state.height)*thumbnail.zoom;
@@ -115,7 +143,9 @@ function wrappedLines(context,text,font,width,height,maxLines) {
     if(line)result.push(line);return result;
   };
   lines=wrap();
-  size=Math.min(size,height/(LINE_HEIGHT*Math.max(1,Math.min(maxLines,lines.length))));
+  const availableHeight=Math.max(.01,height),minimumWidth=Math.max(.01,width);
+  width=minimumWidth;
+  size=Math.min(size,availableHeight/(LINE_HEIGHT*Math.max(1,Math.min(maxLines,lines.length))));
   lines=wrap();
   const count=Math.max(1,Math.min(maxLines,Math.floor((height+.000001)/(size*LINE_HEIGHT)))),visible=lines.slice(0,count);
   if(lines.length>count&&visible.length){let last=visible[visible.length-1];while(last&&!fits(`${last}…`))last=last.slice(0,-1);visible[visible.length-1]=`${last}…`;}
@@ -133,31 +163,34 @@ function textBlock(context,text,font,box,maxLines) {
 }
 
 function drawMini(context,state,card,bitmap,metadata,settings) {
+  if(card.photo.width<=0||card.photo.height<=0)return;
   const mapping=backThumbnailMapping(state,card,metadata,settings);
-  context.save();context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';context.translate(card.photo.x,card.photo.y);
-  context.fillStyle='#ffffff';context.fillRect(0,0,card.photo.width,card.photo.height);
+  context.save();context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+  backContainerPath(context,card.photoFrame??card.photo,settings.imageStyle);context.clip();
+  context.translate(card.photo.x,card.photo.y);
   context.beginPath();context.rect(0,0,card.photo.width,card.photo.height);context.clip();
-  // A monthly source is additionally clipped to its saved trim page, preserving white gaps.
+  // A monthly source is additionally clipped to its saved trim page, preserving transparent gaps.
   context.beginPath();context.rect(mapping.clip.x,mapping.clip.y,mapping.clip.width,mapping.clip.height);context.clip();
   context.drawImage(bitmap,mapping.x,mapping.y,mapping.width,mapping.height);
   context.restore();
 }
 
 function drawCaptions(context,card,plan) {
-  const blocks=[['title','artworkTitle',2],['artist','artist',2],['description','description',4]].filter(([field])=>card.metadata[field]?.trim());
-  if(!blocks.length)return;
-  const gap=Math.min(card.padding,card.text.height*.03),available=card.text.height-gap*(blocks.length-1);
-  const weights=blocks.map(([field,role,maxLines])=>{
-    const font=plan.fonts[role],wrapped=wrappedLines(context,card.metadata[field],font,card.text.width,Number.MAX_SAFE_INTEGER,maxLines);
-    return Math.max(1,wrapped.lines.length)*font.size/POINTS_PER_INCH*LINE_HEIGHT;
-  });
-  const total=weights.reduce((sum,value)=>sum+value,0),scale=Math.min(1,available/total),used=total*scale+gap*(blocks.length-1);
-  let y=card.text.y+(card.text.height-used)*positionFraction(plan.settings.alignY,'y');
-  blocks.forEach(([field,role,maxLines],index)=>{
-    const height=weights[index]*scale;
-    textBlock(context,card.metadata[field],{...plan.fonts[role],size:plan.fonts[role].size*scale},{...card.text,y,height},maxLines);
-    y+=height+gap;
-  });
+  const style=plan.settings.detailsStyle,blocks=[['title','artworkTitle'],['artist','artist'],['description','description']].filter(([field])=>card.metadata[field]?.trim());
+  const runs=blocks.flatMap(([field,role],index)=>[{text:`${index?'\n':''}${card.metadata[field]}`,font:plan.fonts[role]}]);
+  if(!runs.length)return;
+  // Each field retains its inherited alignment unless a shared container alignment is selected.
+  context.save();backContainerPath(context,card.textFrame,style);context.clip();context.beginPath();context.rect(card.text.x,card.text.y,card.text.width,card.text.height);context.clip();
+  if(style.align!=='inherit') {
+    const result=drawBackRichText(context,{rect:card.textFrame,style,font:plan.fonts.artworkTitle,runs});
+    if(result?.overflow)plan.notices.push(`${card.name}: artwork details exceed their container; adjust typography or grid geometry.`);
+  } else {
+    const measured=blocks.map(([field,role])=>{const object={rect:card.textFrame,style:{...style,vertical:'top'},font:plan.fonts[role],runs:[{text:card.metadata[field],font:plan.fonts[role]}]},lines=backTextLines(context,object.runs,card.text.width,object.font);return {object,height:lines.reduce((sum,line)=>sum+line.height,0),wide:lines.some(line=>line.width>card.text.width)};});
+    const height=measured.reduce((sum,item)=>sum+item.height,0);let y=card.text.y+Math.max(0,card.text.height-height)*positionFraction(style.vertical,'y');
+    for(const item of measured){const font=item.object.font;drawBackRichText(context,{...item.object,rect:{x:card.text.x,y,width:card.text.width,height:item.height},style:{...normalizeBackStyle(),align:font.align},font});y+=item.height;}
+    if(height>card.text.height||measured.some(item=>item.wide))plan.notices.push(`${card.name}: artwork details exceed their container; adjust typography or grid geometry.`);
+  }
+  context.restore();
 }
 
 function beginArtwork(context,state,width,height,trim) {
@@ -166,50 +199,109 @@ function beginArtwork(context,state,width,height,trim) {
 }
 
 /** Shared flat / 3D / PDF artwork, with bounded captions and independent thumbnail transforms. */
-export function drawBackCover(context,state,width,height,trim=true,previewPhotos=true) {
+export function drawBackCover(context,state,width,height,trim=true,previewPhotos=true,backgroundRecord=null) {
   const uploaded=backCoverUsesImage(state)?assets.get('back-cover'):null;
   if(uploaded?.bitmap) {drawPhoto(context,uploaded.bitmap,uploaded.metadata.crop,state,width,height,trim,uploaded.metadata);return;}
   const plan=backCoverPlan(state);
   beginArtwork(context,state,width,height,trim);
-  context.fillStyle=plan.settings.background;context.fillRect(-state.bleed,-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed);
+  if(!plan.settings.backgroundTransparent){context.fillStyle=plan.settings.background;context.fillRect(-state.bleed,-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed);}
+  const background=backgroundRecord??(plan.settings.backgroundImage?assets.get('back-cover-background'):null);
+  if(background?.fullArtwork)context.drawImage(background.fullArtwork,-state.bleed,-state.bleed,state.width+2*state.bleed,state.height+2*state.bleed);
+  else if(background?.bitmap) {
+    context.save();context.translate(-state.bleed,-state.bleed);
+    drawPhoto(context,background.bitmap,background.metadata.crop,{...state,photoBackground:plan.settings.backgroundTransparent?'transparent':plan.settings.background},state.width+2*state.bleed,state.height+2*state.bleed,false,background.metadata);context.restore();
+  }
   if(backCoverUsesImage(state)) {
     textBlock(context,'Choose a back-cover image.',{family:'helvetica',style:'normal',size:14,color:'#555555',align:'center'},{x:state.margin,y:state.height*.4,width:state.width-2*state.margin,height:state.height*.2},3);
   } else for(const card of plan.cards) {
     const record=assets.get(card.key);
-    if(plan.settings.cellFill){context.fillStyle=plan.settings.cellBackground;context.fillRect(card.x,card.y,card.width,card.height);}
+    if(plan.settings.cellFill&&!plan.settings.cellBackgroundTransparent){context.fillStyle=plan.settings.cellBackground;context.fillRect(card.x,card.y,card.width,card.height);}
+    drawBackContainer(context,card.textFrame,plan.settings.detailsStyle);
+    if(card.imageVisible)drawBackContainer(context,card.photoFrame,plan.settings.imageStyle);
     textBlock(context,card.name,{family:'helvetica',style:'bold',size:9,color:plan.fonts.artist.color,align:plan.settings.alignX},card.label,1);
+    if(!card.imageVisible) {drawCaptions(context,card,plan);continue;}
     if(previewPhotos&&record?.bitmap) drawMini(context,state,card,record.bitmap,record.metadata,plan.settings);
-    else {
-      context.fillStyle=previewPhotos?'#eeeeee':'#ffffff';context.fillRect(card.photo.x,card.photo.y,card.photo.width,card.photo.height);
-      if(previewPhotos)textBlock(context,'Photo missing',{family:'helvetica',style:'normal',size:9,color:'#555555',align:'center'},card.photo,2);
-    }
+    else if(previewPhotos)textBlock(context,'Photo missing',{family:'helvetica',style:'normal',size:9,color:'#555555',align:'center'},card.photo,2);
     drawCaptions(context,card,plan);
+    if(card.imageVisible&&plan.settings.imageStyle.borderWidth>0)drawBackContainer(context,card.photoFrame,{...plan.settings.imageStyle,transparent:true});
+  }
+  if(!backCoverUsesImage(state)&&previewPhotos)for(const object of plan.settings.objects) {
+    const result=drawBackObject(context,object,object.type==='image'?assets.get(backImageKey(object.id)):null);
+    if(result?.overflow)plan.notices.push(`${object.name}: text exceeds its container; adjust typography or size.`);
   }
   context.restore();return plan;
 }
 
+/** Bound oversized off-page containers before either original decoding or Pica allocation. */
+function backImageRaster(box,spec) {
+  const width=Math.max(1,Math.ceil(box.width*spec.ppi)),height=Math.max(1,Math.ceil(box.height*spec.ppi)),scale=Math.min(1,MINI_MAX_EDGE/Math.max(width,height),Math.sqrt(MINI_MAX_PIXELS/(width*height)));
+  return {width:Math.max(1,Math.floor(width*scale)),height:Math.max(1,Math.floor(height*scale))};
+}
+
 /** Reread originals sequentially using the exact thumbnail mapping, then Pica-resample each clipped image. */
 export async function printGeneratedBackCover(state,files,onProgress=()=>{}) {
+  if(backCoverUsesImage(state))throw new Error('Uploaded back covers use the original-photo PDF export path.');
   const spec=printRasterSpec(state),canvas=document.createElement('canvas');canvas.width=spec.width;canvas.height=spec.height;
   try {
-    const context=canvas.getContext('2d'),plan=drawBackCover(context,state,canvas.width,canvas.height,false,false),warnings=plan.notices.map(notice=>`Generated back cover: ${notice}`);
+    const context=canvas.getContext('2d');
+    let backgroundBitmap,backgroundCanvas;let plan;
+    try {
+      if(normalizeBackCover(state.backCover).backgroundImage) {
+        backgroundBitmap=await assets.exportBitmap('back-cover-background',files,state,spec.width,spec.height);
+        backgroundCanvas=(await printPhotoCanvas(backgroundBitmap,assets.get('back-cover-background').metadata,{...state,photoBackground:normalizeBackCover(state.backCover).backgroundTransparent?'transparent':normalizeBackCover(state.backCover).background},onProgress)).canvas;
+      }
+      plan=drawBackCover(context,state,canvas.width,canvas.height,false,false,backgroundCanvas?{fullArtwork:backgroundCanvas}:null);
+    } finally {backgroundBitmap?.close();if(backgroundCanvas)backgroundCanvas.width=backgroundCanvas.height=1;}
+    const warnings=plan.notices.map(notice=>`Generated back cover: ${notice}`);
     for(const card of plan.cards) {
+      if(!card.imageVisible||card.photo.width<=0||card.photo.height<=0)continue;
       let bitmap,work,resized;
       try {
         onProgress(`Generated back cover · ${card.name} thumbnail from original…`);
         const record=assets.get(card.key),mapping=backThumbnailMapping(state,card,record.metadata,plan.settings);
-        const targetWidth=Math.max(1,Math.ceil(card.photo.width*spec.ppi)),targetHeight=Math.max(1,Math.ceil(card.photo.height*spec.ppi));
+        const target=backImageRaster(card.photo,spec),targetWidth=target.width,targetHeight=target.height;
+        if(Math.min(targetWidth/card.photo.width,targetHeight/card.photo.height)<spec.ppi-1)warnings.push(`${card.name}: oversized thumbnail raster capped to ${targetWidth} × ${targetHeight} px.`);
         bitmap=await assets.exportBitmap(card.key,files,readerState(state),targetWidth,targetHeight,mapping);
         const detail=Math.min(bitmap.width/mapping.width,bitmap.height/mapping.height),required=Math.min(spec.ppi,300);
         if(detail<required)warnings.push(`${card.name} back thumbnail: bounded original decode supplies about ${Math.floor(detail)} PPI; resizing adds no detail.`);
         const factor=Math.max(1,Math.min(MINI_OVERSAMPLE,detail/spec.ppi,MINI_MAX_EDGE/Math.max(targetWidth,targetHeight),Math.sqrt(MINI_MAX_PIXELS/(targetWidth*targetHeight))));
         work=document.createElement('canvas');work.width=Math.max(1,Math.floor(targetWidth*factor));work.height=Math.max(1,Math.floor(targetHeight*factor));
         const miniContext=work.getContext('2d');miniContext.scale(work.width/card.photo.width,work.height/card.photo.height);
-        drawMini(miniContext,state,{...card,photo:{...card.photo,x:0,y:0}},bitmap,record.metadata,plan.settings);
+        drawMini(miniContext,state,{...card,photoFrame:{...card.photoFrame,x:card.photoFrame.x-card.photo.x,y:card.photoFrame.y-card.photo.y},photo:{...card.photo,x:0,y:0}},bitmap,record.metadata,plan.settings);
         onProgress(`Generated back cover · ${card.name} Pica thumbnail resize…`);
         resized=await resizeImageBitmapToCanvas(work,targetWidth,targetHeight);
         beginArtwork(context,state,canvas.width,canvas.height,false);
         context.drawImage(resized,card.photo.x,card.photo.y,card.photo.width,card.photo.height);context.restore();
+      } finally {bitmap?.close();if(work)work.width=work.height=1;if(resized)resized.width=resized.height=1;}
+    }
+    if(plan.settings.imageStyle.borderWidth>0) {
+      beginArtwork(context,state,canvas.width,canvas.height,false);
+      for(const card of plan.cards)if(card.imageVisible)drawBackContainer(context,card.photoFrame,{...plan.settings.imageStyle,transparent:true});
+      context.restore();
+    }
+    for(const object of plan.settings.objects) {
+      let bitmap,work,resized;
+      try {
+        let record=null;
+        if(object.type==='image') {
+          const box=backContentRect(object.rect,object.style),key=backImageKey(object.id),source=assets.get(key);
+          if(!source?.bitmap)throw new Error(`${object.name}: image missing or photo access not restored.`);
+          if(box.width>0&&box.height>0) {
+            const mapping=backObjectImageMapping(object,source.metadata),target=backImageRaster(box,spec),targetWidth=target.width,targetHeight=target.height;
+            if(Math.min(targetWidth/box.width,targetHeight/box.height)<spec.ppi-1)warnings.push(`${object.name}: oversized image raster capped to ${targetWidth} × ${targetHeight} px.`);
+            onProgress(`Generated back cover · ${object.name} from original…`);
+            bitmap=await assets.exportBitmap(key,files,state,targetWidth,targetHeight,mapping);
+            const detail=Math.min(bitmap.width/mapping.width,bitmap.height/mapping.height);
+            if(detail<Math.min(spec.ppi,300))warnings.push(`${object.name}: bounded original supplies about ${Math.floor(detail)} PPI; resizing adds no detail.`);
+            work=document.createElement('canvas');work.width=targetWidth;work.height=targetHeight;
+            const imageContext=work.getContext('2d');imageContext.scale(targetWidth/box.width,targetHeight/box.height);
+            imageContext.drawImage(bitmap,mapping.x,mapping.y,mapping.width,mapping.height);
+            resized=await resizeImageBitmapToCanvas(work,targetWidth,targetHeight);record={fullArtwork:resized};
+          }
+        }
+        beginArtwork(context,state,canvas.width,canvas.height,false);
+        const result=drawBackObject(context,object,record);context.restore();
+        if(result?.overflow)warnings.push(`${object.name}: text exceeds its container and is clipped.`);
       } finally {bitmap?.close();if(work)work.width=work.height=1;if(resized)resized.width=resized.height=1;}
     }
     return {canvas,spec,warnings};
@@ -220,7 +312,7 @@ export async function printGeneratedBackCover(state,files,onProgress=()=>{}) {
 export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false) {
   const files=window.Bezi?.files,available=files&&['requestDirectory','getGrants','list','stat','readBytes'].every(method=>typeof files[method]==='function')&&typeof createImageBitmap==='function'&&picaAvailable();
   const canvas=byId('back-cover-preview'),context=canvas.getContext('2d'),zoomViewport=byId('back-cover-zoom-viewport'),zoomStage=byId('back-cover-zoom-stage'),zoomOut=byId('back-cover-zoom-out'),zoomIn=byId('back-cover-zoom-in'),zoomFit=byId('back-cover-zoom-fit'),zoomRange=byId('back-cover-zoom-range'),zoomValue=byId('back-cover-zoom-value'),thumbnailCanvas=byId('back-thumbnail-preview'),thumbnailContext=thumbnailCanvas.getContext('2d');
-  let grants=[],grant=null,folder='',offset=0,total=0,token=0,notice='',disposed=false,previewZoom=1,previewInitialized=false;
+  let grants=[],grant=null,folder='',offset=0,total=0,token=0,notice='',disposed=false,previewZoom=1,previewInitialized=false,pickerKey='back-cover';
   previewZoom=bounded(readPreference('back-zoom',1),1,.25,4);
   const locked=()=>isBusy()||assets.pending>0;
   const status=text=>{notice=text;byId('back-cover-message').textContent=text;};
@@ -241,15 +333,12 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     ['placement','Image relative to captions','select',optionList(['left','right','top','bottom'])],['imageShare','Image share of split · %','number'],
     ['alignX','Frame horizontal alignment','select',optionList(['left','center','right'])],['alignY','Frame / captions vertical alignment','select',optionList(['top','middle','bottom'])],
     ['cropMode','Global thumbnail source / framing','select',[['monthly','Saved monthly trim · preserve page'],['fill','Original source · fill thumbnail'],['fit','Original source · fit whole image']]],
-    ['background','Cover background','color'],['cellBackground','Card background color','color'],['cellFill','Use card background','checkbox']
+    ['frontCoverCredits','Include front-cover credits','checkbox'],['frontCoverImage','Include front-cover image','checkbox'],['backgroundImage','Use background image','checkbox'],['background','Cover background','color'],['backgroundTransparent','Transparent cover background','checkbox'],['cellBackground','Card background color','color'],['cellBackgroundTransparent','Transparent card background','checkbox'],['cellFill','Use card background','checkbox']
   ];
   function numericDraft(control,min,max) {
-    const value=control.valueAsNumber;
-    if(!Number.isFinite(value)){fieldNotice='Enter a number; the last saved setting remains applied.';renderConstraints();return null;}
-    const clamped=Math.max(min,Math.min(max,value));
-    fieldNotice=clamped!==value?`Input limited to ${min}–${max}. Requested geometry may be fitted further to protect print safety.`:'';
-    if(clamped!==value)control.value=String(clamped);
-    return clamped;
+    const value=readNumericDraft(control,min,max);
+    fieldNotice='';
+    return value;
   }
   for(const [key,labelText,type,options] of generatedFields) {
     const label=document.createElement('label'),control=document.createElement(type==='select'?'select':'input');
@@ -268,8 +357,10 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
       if(type!=='number')fieldNotice='';
       onSettingsChange(normalizeBackCover({...getState().backCover,[key]:value}));
     });
-    control.addEventListener('blur',()=>{if(type==='number'){const saved=normalizeBackCover(getState().backCover)[key];control.value=String(key==='imageShare'?saved*100:saved);}});
+    if(type==='number') commitNumericOnBlur(control,...(key==='imageShare'?[15,85]:NUMBER_FIELDS[key]),()=>{const saved=normalizeBackCover(getState().backCover)[key];return key==='imageShare'?saved*100:saved;});
   }
+  const chooseBackground=document.createElement('button');chooseBackground.type='button';chooseBackground.className='layout-image-picker';chooseBackground.textContent='Choose / frame background image';
+  chooseBackground.addEventListener('click',()=>{byId('image-picker-tab').click();const target=byId('photo-target');target.value='back-cover-background';target.dispatchEvent(new Event('change'));});byId('back-layout-controls').append(chooseBackground);
   MONTHS.forEach((name,month)=>{const option=document.createElement('option');option.value=String(month);option.textContent=name;byId('back-thumbnail-month').append(option);});
   byId('back-thumbnail-month').addEventListener('change',()=>{if(locked())return;thumbnailMonth=Number(byId('back-thumbnail-month').value);writePreference('thumbnail-month',thumbnailMonth);fieldNotice='';render();});
   for(const [id,key,bounds] of [['back-thumbnail-mode','mode',null],['back-thumbnail-x','x',[0,100]],['back-thumbnail-y','y',[0,100]],['back-thumbnail-zoom','zoom',[1,THUMBNAIL_ZOOM_MAX]]]) {
@@ -280,12 +371,12 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
       const settings=normalizeBackCover(getState().backCover),monthKey=`month-${thumbnailMonth}`;
       settings.thumbnails[monthKey]={...settings.thumbnails[monthKey],[key]:value};onSettingsChange(settings);
     });
-    control.addEventListener('blur',()=>{if(bounds){const saved=normalizeBackCover(getState().backCover).thumbnails[`month-${thumbnailMonth}`][key];control.value=String(key==='x'||key==='y'?saved*100:saved);}});
+    if(bounds) commitNumericOnBlur(control,...bounds,()=>{const saved=normalizeBackCover(getState().backCover).thumbnails[`month-${thumbnailMonth}`][key];return key==='x'||key==='y'?saved*100:saved;});
   }
   byId('back-thumbnail-reset').addEventListener('click',()=>{
     if(locked()||backCoverUsesImage(getState()))return;const settings=normalizeBackCover(getState().backCover);settings.thumbnails[`month-${thumbnailMonth}`]={...THUMBNAIL_DEFAULTS};fieldNotice=`${MONTHS[thumbnailMonth]} thumbnail framing reset; monthly crop and details kept.`;onSettingsChange(settings);
   });
-  byId('back-cover-reset-layout').addEventListener('click',()=>{if(locked()||backCoverUsesImage(getState()))return;fieldNotice='Back grid and thumbnail framing reset. Uploads, monthly photos/crops, details and typography kept.';onSettingsChange(normalizeBackCover({...BACK_COVER_DEFAULTS,mode:'dynamic'}));});
+  byId('back-cover-reset-layout').addEventListener('click',()=>{if(locked()||backCoverUsesImage(getState()))return;fieldNotice='Back grid and thumbnail framing reset. Custom containers, shared styles, uploads, monthly crops and typography kept.';onSettingsChange(normalizeBackCover({...BACK_COVER_DEFAULTS,mode:'dynamic',objects:normalizeBackCover(getState().backCover).objects,detailsStyle:normalizeBackCover(getState().backCover).detailsStyle,imageStyle:normalizeBackCover(getState().backCover).imageStyle,detailsFonts:normalizeBackCover(getState().backCover).detailsFonts}));});
   function renderConstraints(summary=backCoverStatus(getState())) {
     byId('back-cover-constraints').textContent=[fieldNotice,...summary.notices].filter(Boolean).join(' ');
   }
@@ -311,7 +402,11 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
         button.addEventListener('click',async()=>{
           if(locked())return;if(entry.kind==='directory'){await browse(entry.relativePath);return;}
           const chosenGrant=grant;
-          try {await assets.assign('back-cover',chosenGrant,entry,files,{...getState()},status);status('');}
+          try {
+            const target=pickerKey,object=normalizeBackCover(getState().backCover).objects.find(item=>backImageKey(item.id)===target),state={...getState(),...(object?{width:object.rect.width,height:object.rect.height,bleed:0}:{})};
+            if(target!=='back-cover'&&!object)throw new Error('This image container was removed.');
+            await assets.assign(target,chosenGrant,entry,files,state,status);status('');
+          }
           catch(error){status(`Upload failed: ${error.message}`);}finally{render();}
         });list.append(button);
       }
@@ -319,7 +414,7 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
       render();
     } catch(error){if(request===token)status(`Cannot browse folder: ${error.message}`);}
   }
-  function selectSource(mode) { if(locked())return;notice='';onSettingsChange(normalizeBackCover({...getState().backCover,mode})); }
+  function selectSource(mode) { if(locked())return;notice='';if(mode==='image')pickerKey='back-cover';onSettingsChange(normalizeBackCover({...getState().backCover,mode})); }
   for(const [id,mode] of [['back-dynamic-tab','dynamic'],['back-image-tab','image']]) {
     byId(id).addEventListener('click',()=>selectSource(mode));
     byId(id).addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const next=event.key==='Home'?'dynamic':event.key==='End'?'image':mode==='dynamic'?'image':'dynamic';selectSource(next);byId(next==='dynamic'?'back-dynamic-tab':'back-image-tab').focus();}});
@@ -346,9 +441,16 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     const placement=photoPlacement(record.metadata.sourceWidth,record.metadata.sourceHeight,crop,state),boundedFit=placement.x<-.000001||placement.y<-.000001||placement.x+placement.width>aw+.000001||placement.y+placement.height>ah+.000001;
     status(mode==='fill'?'Centered fill: image covers the page and bleed.':boundedFit?'The existing minimum image scale prevents a full fit for this extreme aspect ratio; some artwork remains outside bleed. Use a less extreme source aspect ratio.':'Full image fitted inside bleed artwork; uncovered areas print white.');render();
   });
+  byId('back-cover-browse-folder').addEventListener('click',()=>byId('back-cover-upload').click());
+  const objectControls=createBackCoverControls({getState,onChange:onSettingsChange,normalize:normalizeBackCover,planFor:backCoverPlan,canvas,stage:zoomStage,locked,refresh:render,chooseImage:async key=>{
+    if(locked())return;pickerKey=key;
+    if(!available){status('Image folder access unavailable. Reopen in a browser with photo folder access.');render();return;}
+    if(!grant?.available)byId('back-cover-upload').click();else {await browse();byId('back-cover-browser').scrollIntoView({block:'nearest'});}
+  }});
   function render() {
     if(disposed)return;
     const state=getState(),summary=backCoverStatus(state),record=assets.get('back-cover'),settings=summary.settings;
+    for(const option of byId('back-cover-columns').options)option.textContent=`${option.value} columns × ${Math.ceil((12+(settings.frontCoverCredits?1:0))/Number(option.value))} rows`;
     let focalX=.5,focalY=.5;
     if(previewInitialized&&canvas.clientWidth&&canvas.clientHeight){const viewportRect=zoomViewport.getBoundingClientRect(),canvasRect=canvas.getBoundingClientRect();focalX=bounded((zoomViewport.clientWidth/2-(canvasRect.left-viewportRect.left))/canvasRect.width,.5,0,1);focalY=bounded((zoomViewport.clientHeight/2-(canvasRect.top-viewportRect.top))/canvasRect.height,.5,0,1);}
     const viewportWidth=zoomViewport.clientWidth||zoomViewport.parentElement?.clientWidth||560,viewportHeight=zoomViewport.clientHeight||420;
@@ -357,34 +459,40 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     zoomStage.style.width=`${Math.max(viewportWidth,displayWidth)}px`;zoomStage.style.height=`${Math.max(viewportHeight,displayHeight)}px`;
     canvas.style.width=`${displayWidth}px`;canvas.style.height=`${displayHeight}px`;
     canvas.width=Math.max(1,Math.round(displayWidth*pixelScale));canvas.height=Math.max(1,Math.round(displayHeight*pixelScale));
-    if(context)drawBackCover(context,state,canvas.width,canvas.height,true);
+    if(context){const artworkPlan=drawBackCover(context,state,canvas.width,canvas.height,true);if(artworkPlan)summary.notices=[...new Set([...summary.notices,...artworkPlan.notices])];}
     if(previewInitialized){const viewportRect=zoomViewport.getBoundingClientRect(),canvasRect=canvas.getBoundingClientRect(),canvasLeft=canvasRect.left-viewportRect.left+zoomViewport.scrollLeft,canvasTop=canvasRect.top-viewportRect.top+zoomViewport.scrollTop;zoomViewport.scrollLeft=Math.max(0,canvasLeft+focalX*displayWidth-zoomViewport.clientWidth/2);zoomViewport.scrollTop=Math.max(0,canvasTop+focalY*displayHeight-zoomViewport.clientHeight/2);}
     previewInitialized=true;
     zoomRange.value=String(Math.round(previewZoom*100));zoomValue.textContent=`${Math.round(previewZoom*100)}%`;
     zoomOut.disabled=locked()||previewZoom<=.25;zoomIn.disabled=locked()||previewZoom>=4;zoomFit.disabled=locked();zoomRange.disabled=locked();
-    canvas.setAttribute('aria-label',summary.mode==='uploaded'?'Uploaded exterior back-cover trim preview':`Generated exterior back cover: January through December, ${settings.columns} columns, artist names, artwork titles and descriptions.`);
+    canvas.setAttribute('aria-label',summary.mode==='uploaded'?'Uploaded exterior back-cover trim preview':`Generated exterior back cover: ${settings.frontCoverCredits?'front-cover credits plus ':''}January through December, ${settings.columns} columns, artist names, artwork titles and descriptions.`);
     const imageMode=backCoverUsesImage(state);
     for(const [id,active] of [['back-dynamic-tab',!imageMode],['back-image-tab',imageMode]]){const tab=byId(id);tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;tab.disabled=locked();}
     byId('back-dynamic-settings').hidden=imageMode;byId('back-image-settings').hidden=!imageMode;
-    byId('back-cover-browser').hidden=!imageMode||!grant;
+    byId('back-cover-browser').hidden=!grant||(imageMode?pickerKey!=='back-cover':pickerKey==='back-cover');
+    const pickerObject=settings.objects.find(object=>backImageKey(object.id)===pickerKey);
+    byId('back-cover-browser-target').textContent=pickerObject?`Choose image for ${pickerObject.name}`:'Choose back-cover image';
+    byId('back-cover-browse-folder').disabled=locked();
     byId('back-cover-mode').parentElement.hidden=true;
     byId('back-cover-status').textContent=record?record.bitmap?`Using ${record.metadata.grantName} / ${record.metadata.relativePath}. Saved crop is respected in preview, 3D and PDF.`:`Saved upload unavailable: ${record.error||'restoration pending'}. Reselect its folder or remove the upload; it is not silently replaced.`:'';
     byId('back-cover-status').hidden=!imageMode||!record||Boolean(record.bitmap);
     byId('back-cover-upload').disabled=!available||locked();byId('back-cover-remove').disabled=locked()||!record;
     for(const mode of ['fill','fit'])byId(`back-cover-${mode}`).disabled=locked()||!record?.bitmap;
-    for(const {key,control} of controls){if(document.activeElement!==control){if(control.type==='checkbox')control.checked=settings[key];else control.value=String(key==='imageShare'?settings[key]*100:settings[key]);}control.disabled=locked()||imageMode;}
+    for(const {key,control} of controls){if(document.activeElement!==control){if(control.type==='checkbox')control.checked=settings[key];else control.value=String(key==='imageShare'?settings[key]*100:settings[key]);}control.disabled=locked()||imageMode||(control.type==='color'&&settings[`${key}Transparent`]===true);}
     const thumbnail=settings.thumbnails[`month-${thumbnailMonth}`];
     byId('back-thumbnail-month').value=String(thumbnailMonth);
     for(const [id,value] of [['back-thumbnail-mode',thumbnail.mode],['back-thumbnail-x',thumbnail.x*100],['back-thumbnail-y',thumbnail.y*100],['back-thumbnail-zoom',thumbnail.zoom]]){const control=byId(id);if(document.activeElement!==control)control.value=String(value);}
     for(const id of ['back-thumbnail-month','back-thumbnail-mode','back-thumbnail-x','back-thumbnail-y','back-thumbnail-zoom','back-thumbnail-reset','back-cover-reset-layout'])byId(id).disabled=locked()||imageMode;
     const monthRecord=assets.get(`month-${thumbnailMonth}`),mode=thumbnail.mode==='inherit'?settings.cropMode:thumbnail.mode;
-    const selectedCard=backCoverPlan(state).cards[thumbnailMonth],thumbnailScale=THUMBNAIL_PREVIEW_EDGE/Math.max(selectedCard.photo.width,selectedCard.photo.height);
-    thumbnailCanvas.width=Math.max(1,Math.round(selectedCard.photo.width*thumbnailScale));thumbnailCanvas.height=Math.max(1,Math.round(selectedCard.photo.height*thumbnailScale));
+    const selectedCard=backCoverPlan(state).cards.find(card=>card.key===`month-${thumbnailMonth}`),thumbnailBox=selectedCard.photoFrame,thumbnailScale=THUMBNAIL_PREVIEW_EDGE/Math.max(thumbnailBox.width,thumbnailBox.height);
+    thumbnailCanvas.width=Math.max(1,Math.round(thumbnailBox.width*thumbnailScale));thumbnailCanvas.height=Math.max(1,Math.round(thumbnailBox.height*thumbnailScale));
     thumbnailCanvas.setAttribute('aria-label',`${MONTHS[thumbnailMonth]} back thumbnail only: ${mode} source, ${thumbnail.zoom.toFixed(2)} times zoom. Monthly crop unchanged.`);
     if(thumbnailContext){
-      thumbnailContext.save();thumbnailContext.scale(thumbnailCanvas.width/selectedCard.photo.width,thumbnailCanvas.height/selectedCard.photo.height);
-      if(monthRecord?.bitmap)drawMini(thumbnailContext,state,{...selectedCard,photo:{...selectedCard.photo,x:0,y:0}},monthRecord.bitmap,monthRecord.metadata,settings);
-      else {thumbnailContext.fillStyle='#eeeeee';thumbnailContext.fillRect(0,0,selectedCard.photo.width,selectedCard.photo.height);textBlock(thumbnailContext,'Photo missing',{family:'helvetica',style:'normal',size:9,color:'#555555',align:'center'},{x:0,y:0,width:selectedCard.photo.width,height:selectedCard.photo.height},2);}
+      const localCard={...selectedCard,photoFrame:{...thumbnailBox,x:0,y:0},photo:{...selectedCard.photo,x:selectedCard.photo.x-thumbnailBox.x,y:selectedCard.photo.y-thumbnailBox.y}};
+      thumbnailContext.save();thumbnailContext.scale(thumbnailCanvas.width/thumbnailBox.width,thumbnailCanvas.height/thumbnailBox.height);
+      drawBackContainer(thumbnailContext,localCard.photoFrame,settings.imageStyle);
+      if(monthRecord?.bitmap)drawMini(thumbnailContext,state,localCard,monthRecord.bitmap,monthRecord.metadata,settings);
+      else textBlock(thumbnailContext,'Photo missing',{family:'helvetica',style:'normal',size:9,color:'#555555',align:'center'},localCard.photoFrame,2);
+      if(settings.imageStyle.borderWidth>0)drawBackContainer(thumbnailContext,localCard.photoFrame,{...settings.imageStyle,transparent:true});
       thumbnailContext.restore();
     }
     byId('back-thumbnail-status').textContent='';
@@ -394,6 +502,7 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     byId('back-cover-page').textContent=`${Math.min(offset+1,total)}–${Math.min(offset+LIST_LIMIT,total)} of ${total} entries`;
     byId('back-cover-file-list').querySelectorAll('button').forEach(button=>{button.disabled=locked()||button.dataset.blocked==='true';});
     byId('back-cover-message').textContent=notice||(!available&&imageMode?'Image folder access unavailable.':'');
+    objectControls.render();
   }
   /** Restore the browser list without requesting permission outside a user gesture. */
   async function restore() {
@@ -401,5 +510,5 @@ export function createBackCoverEditor(getState,onSettingsChange,isBusy=()=>false
     try {grants=await files.getGrants();if(disposed)return;const saved=assets.get('back-cover');grant=grants.find(item=>item.grantId===saved?.metadata.grantId)||grants.find(item=>item.available)||null;grantOptions();if(grant){byId('back-cover-browser').hidden=false;await browse();}}
     catch(error){status(`Folder list unavailable: ${error.message}`);}
   }
-  return {render,restore,summary:()=>backCoverStatus(getState()),dispose(){disposed=true;token++;previewResizeObserver?.disconnect();canvas.width=canvas.height=1;thumbnailCanvas.width=thumbnailCanvas.height=1;}};
+  return {render,restore,summary:()=>backCoverStatus(getState()),dispose(){disposed=true;token++;objectControls.dispose();previewResizeObserver?.disconnect();canvas.width=canvas.height=1;thumbnailCanvas.width=thumbnailCanvas.height=1;}};
 }

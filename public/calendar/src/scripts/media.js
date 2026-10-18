@@ -1,5 +1,6 @@
 import { reportStorageFailure } from './browser-storage.js';
 import { ASSET_KEYS, assetLabel } from './layout.js';
+import { isBackImageKey, BACK_OBJECT_LIMIT } from './back-cover-model.js';
 
 export const FILE_LIMIT = 256 * 1024 * 1024;
 const STORAGE_KEY = 'calendar-layout-2027-39be18a4-712d-45cd-a061-f492bec78230:photo-assets-v1';
@@ -243,7 +244,7 @@ export function drawMappedPhoto(context, bitmap, placement) {
 export function drawPhoto(context, bitmap, crop, state, width, height, trim = true, metadata = null) {
   const placement = photoPlacement(metadata?.sourceWidth || bitmap.width,metadata?.sourceHeight || bitmap.height,crop,state);
   context.save();
-  context.fillStyle = '#fff'; context.fillRect(0,0,width,height);
+  context.fillStyle = state.photoBackground || '#fff'; context.fillRect(0,0,width,height);
   context.beginPath(); context.rect(0,0,width,height); context.clip();
   context.scale(width/(trim?state.width:placement.artworkWidth),height/(trim?state.height:placement.artworkHeight));
   if (trim) context.translate(-state.bleed,-state.bleed);
@@ -270,11 +271,17 @@ export function createAssetStore() {
   let pending = 0;
   let disposed = false;
   let exportLocked = false;
-  const notifyPending = () => listeners.forEach(listener => listener(null));
+  // Subscribers render UI; their failures must not interrupt operation accounting
+  // or prevent later subscribers from observing the unlocked state.
+  const notify = key => listeners.forEach(listener => {
+    try { listener(key); } catch(error) { console.error('Photo asset subscriber failed:',error); }
+  });
+  const notifyPending = () => notify(null);
   const assertEditable = () => { if (exportLocked) throw new Error('Photo editing is locked during PDF export.'); };
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY)) || {}; } catch {}
-  for (const key of ASSET_KEYS) {
+  const customKeys=Object.keys(saved).filter(isBackImageKey).slice(0,BACK_OBJECT_LIMIT);
+  for (const key of [...ASSET_KEYS,...customKeys]) {
     const item = saved[key];
     if (item && typeof item.grantId === 'string' && safeRelativePath(item.relativePath)) records.set(key, { metadata: { grantId:item.grantId, grantName:String(item.grantName || 'Photo folder'), relativePath:item.relativePath, crop:normalizeCrop(item.crop), sourceWidth:Number(item.sourceWidth) || 0, sourceHeight:Number(item.sourceHeight) || 0, sourceModifiedAt:typeof item.sourceModifiedAt==='string'?item.sourceModifiedAt:null, sourceBytes:Number(item.sourceBytes)||null }, bitmap:null, revision:0, error:'Photo folder not restored yet.' });
   }
@@ -283,7 +290,7 @@ export function createAssetStore() {
     revision++;
     if (records.has(key)) records.get(key).revision = revision;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(metadata())); } catch { reportStorageFailure(); }
-    listeners.forEach(listener => listener(key));
+    notify(key);
   }
   function close(key) { records.get(key)?.bitmap?.close(); }
   async function load(key, item, files, state = null, onProgress = ()=>{}) {
@@ -316,7 +323,10 @@ export function createAssetStore() {
       records.set(key,{metadata,bitmap,revision:0,error:''});bitmap=null;
       changed(key);
       return preparation;
-    } finally {decoded?.close();bitmap?.close();pending--;notifyPending();}
+    } finally {
+      try {decoded?.close();}
+      finally {try {bitmap?.close();} finally {pending--;notifyPending();}}
+    }
   }
   return {
     get revision() { return revision; },
@@ -329,7 +339,8 @@ export function createAssetStore() {
     async assign(key, grant, entry, files, state, onProgress = ()=>{}) {
       assertEditable();
       if (pending) throw new Error('Wait for photo restoration / assignment / resizing to finish.');
-      if (!ASSET_KEYS.includes(key)) throw new Error('Unknown artwork slot.');
+      if (!ASSET_KEYS.includes(key) && !isBackImageKey(key)) throw new Error('Unknown artwork slot.');
+      if(isBackImageKey(key)&&!records.has(key)&&[...records.keys()].filter(isBackImageKey).length>=BACK_OBJECT_LIMIT)throw new Error('Custom image limit reached. Remove an image container first.');
       if (!state) throw new Error('Print specification is required before assigning a photo.');
       return load(key,{grantId:grant.grantId,grantName:grant.name,relativePath:entry.relativePath,crop:{...CENTER_CROP}},files,Object.freeze({...state}),onProgress);
     },

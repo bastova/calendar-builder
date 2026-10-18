@@ -45,7 +45,7 @@ test('summaries never claim calibration, ICC conversion or device-specific color
 });
 test('printer selector renders all groups and updates source and media feedback',()=>{
  const nodes=new Map();
- class Node{children=[];value='';textContent='';hidden=false;classList={toggle(){}};append(n){this.children.push(n)}replaceChildren(){this.children=[]}setAttribute(){}addEventListener(){}removeEventListener(){}querySelector(selector){return get(selector)} getContext(){return {fillRect(){},getImageData:()=>({data:new Uint8ClampedArray(this.width*this.height*4)}),putImageData(){}}} }
+ class Node{children=[];value='';textContent='';hidden=false;classList={toggle(){}};append(n){this.children.push(n)}replaceChildren(){this.children=[]}setAttribute(){}addEventListener(){}removeEventListener(){}querySelector(selector){return get(selector)} getContext(){return {save(){},restore(){},translate(){},fillRect(){},getImageData:()=>({data:new Uint8ClampedArray(this.width*this.height*4)}),putImageData(){}}} }
  const get=id=>{if(!nodes.has(id))nodes.set(id,new Node());return nodes.get(id)};
  globalThis.document={getElementById:get,createElement:()=>new Node()};
  const state={...base,view:'spread',month:0,printColor:{target:'epson'}};

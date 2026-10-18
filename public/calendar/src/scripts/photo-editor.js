@@ -12,7 +12,7 @@ const byId = id => document.getElementById(id);
 const sizeLabel = size => Number.isFinite(size) ? `${(size / (1024 * 1024)).toFixed(2)} MiB` : 'unknown size';
 
 /** Wire directory grants and the direct-manipulation photo workspace; no native picker. */
-export function createPhotoEditor(getState, selectTarget, onMetadataChange) {
+export function createPhotoEditor(getState, selectTarget, onMetadataChange, onArtworkAssigned=()=>{}) {
   const files = window.Bezi?.files;
   const available = files && ['requestDirectory','getGrants','list','stat','readBytes','revoke'].every(method => typeof files[method] === 'function') && typeof createImageBitmap === 'function' && picaAvailable();
   let grants = [], activeGrant = null, relativeFolder = '', offset = 0, total = 0, listToken = 0;
@@ -25,11 +25,11 @@ export function createPhotoEditor(getState, selectTarget, onMetadataChange) {
   artistInput.maxLength=ARTWORK_METADATA_LIMITS.artist;titleInput.maxLength=ARTWORK_METADATA_LIMITS.title;descriptionInput.maxLength=ARTWORK_METADATA_LIMITS.description;
   for(const input of [artistInput,titleInput,descriptionInput]) input.addEventListener('input',()=>{
     // The photo target owns this draft, not the month retained during end-spread navigation.
-    if(metadataTarget!==target || !/^month-(?:[0-9]|1[01])$/.test(target)) return;
+    if(metadataTarget!==target || (target!=='front-cover'&&!/^month-(?:[0-9]|1[01])$/.test(target))) return;
     onMetadataChange(target,{artist:artistInput.value,title:titleInput.value,description:descriptionInput.value});
   });
   function renderMetadata() {
-    const isMonth=/^month-(?:[0-9]|1[01])$/.test(target),changed=metadataTarget!==target;
+    const isMonth=target==='front-cover'||/^month-(?:[0-9]|1[01])$/.test(target),changed=metadataTarget!==target;
     metadataPanel.hidden=!isMonth;
     artistInput.disabled=titleInput.disabled=descriptionInput.disabled=busy||assets.pending>0||!isMonth;
     if(isMonth) {
@@ -79,6 +79,7 @@ export function createPhotoEditor(getState, selectTarget, onMetadataChange) {
           try {
             const result=await assets.assign(chosenTarget,chosenGrant,entry,files,chosenState,text=>message(`${assetLabel(chosenTarget)} · ${text}`));
             if (result) {
+              onArtworkAssigned(chosenTarget);
               const availablePpi=Math.min(result.decodedPpi,result.sourceDpi),spec=result.spec;
               message(`Assigned ${entry.name} to ${assetLabel(chosenTarget)}. Pica prepared ${spec.width} × ${spec.height} px cropped print artwork for the current specification; only the full-source 768 px preview is retained. Original file unchanged; PDF rereads it for the final crop.${availablePpi<Math.min(TARGET_PPI,spec.ppi)?` Warning: source / bounded decode supplies ${Math.floor(availablePpi)} effective PPI; resizing cannot add detail.`:''}${spec.ppi<TARGET_PPI?` Raster cap: ${Math.floor(spec.ppi)} PPI, not 300.`:''}`);
             }
@@ -342,7 +343,7 @@ export function createPhotoEditor(getState, selectTarget, onMetadataChange) {
     byId('photo-target').value = target;
     const endSpreadNote=byId('photo-end-spread-note'),endSelected=!state.previewClosed&&['opening','closing'].includes(state.endSpread);
     endSpreadNote.hidden=!endSelected;
-    endSpreadNote.textContent=endSelected?`${state.endSpread==='opening'?'Opening':'Closing'} is a solid-color spread with no photo slot. The photo editor keeps its explicitly selected artwork: ${assetLabel(target)}. Assignments and crop edits affect only that named slot; set end-spread color in Layout modifier.`:'';
+    endSpreadNote.textContent=endSelected?`${state.endSpread==='opening'?'Opening':'Closing'} has separate top and bottom artwork settings in Layout modifier. This editor is editing: ${assetLabel(target)}. Assignments and crop edits affect only that named slot.`:'';
     const placement = record?.bitmap ? photoPlacement(record.metadata.sourceWidth,record.metadata.sourceHeight,crop,state) : null;
     const cssWidth = workspace.clientWidth, cssHeight = workspace.clientHeight;
     if (cssWidth>0 && cssHeight>0) {
