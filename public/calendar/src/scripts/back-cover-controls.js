@@ -89,7 +89,8 @@ export function createBackCoverControls({getState,onChange,normalize,planFor,can
     field(parent,'Size · pt','number',()=>get().size,value=>patch({size:value}),null,[4,144]);
     field(parent,'Text color','color',()=>get().color,value=>patch({color:value}));
     if(alignment)field(parent,'Font alignment','select',()=>get().align,value=>patch({align:value}),['left','center','right']);
-    const styles=make('div','layout-segments back-font-styles');styles.setAttribute('role','group');styles.setAttribute('aria-label','Font style');parent.append(styles);
+    const styleRow=make('div','back-font-style-row'),styleCaption=make('span','layout-control-label','Style');
+    const styles=make('div','layout-segments back-font-styles');styles.setAttribute('role','group');styles.setAttribute('aria-label','Font style');styleRow.append(styleCaption,styles);parent.append(styleRow);
     for(const [style,label] of [['normal','R'],['bold','B'],['italic','I'],['bolditalic','BI']]) {
       const element=button(styles,label,()=>patch({style}));element.className=`font-style-icon font-style-${style}`;element.setAttribute('aria-label',style==='normal'?'Regular':style==='bolditalic'?'Bold italic':title(style));element.title=element.getAttribute('aria-label');element.addEventListener('pointerdown',event=>event.preventDefault());
       fields.push({control:element,type:'style',get:()=>get().style===style,available:()=>!FONT_CATALOG[get().family]||Object.hasOwn(FONT_CATALOG[get().family].files,style),owner:parent});

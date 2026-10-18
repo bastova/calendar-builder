@@ -62,6 +62,30 @@ test('short-phone preview can shrink without consuming the settings viewport', (
   assert.equal(declarations['max-height'], '50%');
   assert.equal(declarations['min-height'], '0');
   assert.equal(declarations.display, 'flex');
+
+test('back-cover typography overrides the shared compact font grid and keeps upload feedback on its own row', () => {
+  const fields = globalDeclarations('#artwork-tabs #back-dynamic-settings .back-inspector-fields');
+  assert.equal(fields['grid-template-columns'], 'minmax(0,1fr)');
+  assert.equal(fields['min-width'], '0');
+  const pickerRow = globalDeclarations('#artwork-tabs #back-dynamic-settings .back-inspector-fields>label:has([data-font-picker])');
+  assert.equal(pickerRow.display, 'grid');
+  assert.equal(pickerRow['grid-template-columns'], 'minmax(0,1fr) minmax(0,176px)');
+  const feedback = globalDeclarations('#artwork-tabs #back-dynamic-settings .back-inspector-fields label>.layout-help');
+  assert.equal(feedback['grid-column'], '1/-1');
+  assert.equal(feedback['overflow-wrap'], 'anywhere');
+  assert.equal(globalDeclarations('#artwork-tabs #back-dynamic-settings .back-inspector-fields input[hidden]').display, 'none');
+});
+
+test('back-cover style buttons retain responsive touch sizes instead of the shared 30px glyph size', () => {
+  const row = globalDeclarations('#artwork-tabs #back-dynamic-settings .back-font-style-row');
+  assert.equal(row.display, 'flex');
+  assert.equal(row['justify-content'], 'space-between');
+  const buttons = globalDeclarations('#artwork-tabs #back-dynamic-settings .back-font-styles .font-style-icon');
+  for (const dimension of ['width','min-width','height','min-height']) assert.equal(buttons[dimension], 'var(--back-control-height)');
+  assert.equal(buttons.flex, '0 0 var(--back-control-height)');
+  assert.equal(buttons.border, '0');
+});
+
 });
 
 // Optional real-browser regression: provide a local Playwright module without adding a production dependency.

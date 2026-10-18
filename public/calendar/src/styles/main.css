@@ -432,7 +432,20 @@ main,.printing-mode main{display:block;max-width:none}
 #back-dynamic-settings .back-control-section{padding:0 0 14px;min-width:0}
 #back-dynamic-settings .settings-group{border-bottom:1px solid var(--border);margin:0}
 #back-dynamic-settings .settings-group>summary{padding:14px 0;min-height:48px;font-size:13px;font-weight:600;text-align:left}
-#back-dynamic-settings .back-inspector-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 10px}
+#artwork-tabs #back-dynamic-settings .back-inspector-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin:0 0 10px;min-width:0}
+#artwork-tabs #back-dynamic-settings .back-inspector-fields>label{min-width:0;max-width:100%;box-sizing:border-box}
+#artwork-tabs #back-dynamic-settings .back-inspector-fields>label:has([data-font-picker]){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,176px);align-items:center}
+#artwork-tabs #back-dynamic-settings .back-inspector-fields [data-font-picker]{width:100%;max-width:100%}
+#artwork-tabs #back-dynamic-settings .back-inspector-fields input[hidden]{display:none}
+#artwork-tabs #back-dynamic-settings .back-inspector-fields label>.layout-help{grid-column:1/-1;margin:0;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+#artwork-tabs #back-dynamic-settings .back-inspector-fields label>.layout-help[hidden]{display:none}
+#artwork-tabs #back-dynamic-settings .back-font-style-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;min-height:var(--back-control-height)}
+#artwork-tabs #back-dynamic-settings .back-font-styles{margin:0;flex-wrap:wrap;flex-shrink:0}
+#artwork-tabs #back-dynamic-settings .back-font-styles .font-style-icon{box-sizing:border-box;flex:0 0 var(--back-control-height);width:var(--back-control-height);min-width:var(--back-control-height);height:var(--back-control-height);min-height:var(--back-control-height);padding:4px;border:0;font-size:17px}
+#artwork-tabs #back-dynamic-settings .back-object-panel,#artwork-tabs #back-dynamic-settings .back-control-section{min-width:0}
+#artwork-tabs #back-dynamic-settings .back-text-label{display:block;min-width:0}
+#artwork-tabs #back-dynamic-settings .back-rich-text{max-width:100%;min-width:0}
+#artwork-tabs #back-dynamic-settings .back-object-actions>button{max-width:100%;white-space:normal}
 #back-dynamic-settings .back-inspector-fields>label{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:10px;min-height:var(--back-control-height);margin:0;font-size:12px;text-align:left;padding:0;border:0}
 #back-dynamic-settings .back-inspector-fields .layout-control-label{color:var(--text-secondary);font-size:12px;letter-spacing:0;float:none;min-width:0}
 #back-dynamic-settings .back-inspector-fields input,#back-dynamic-settings .back-inspector-fields select{box-sizing:border-box;min-height:var(--back-control-height);height:var(--back-control-height);margin:0;padding:6px 8px;border-radius:7px;font-size:12px;min-width:0}
