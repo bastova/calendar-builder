@@ -430,6 +430,18 @@ export function createPhotoEditor(getState, selectTarget, onMetadataChange, onAr
   }
   render();
   return { files:available?files:null, restore, render,
+    /** Open the imported folder itself, regardless of other available grants. */
+    async useFolder(grant) {
+      if (!available) throw new Error('Local photo access is unavailable.');
+      if (!grant || typeof grant.grantId !== 'string') throw new Error('Invalid photo folder grant.');
+      const refreshedGrants = await files.getGrants();
+      grants = refreshedGrants.filter(item => item.grantId !== grant.grantId);
+      grants.push(grant);
+      activeGrant = grant;
+      updateGrants();
+      byId('photo-browser').hidden = false;
+      await browse('',0);
+    },
     setTarget(key) { if(!ASSET_KEYS.includes(key)||key==='back-cover')return; if (target!==key) {finishDrag();flushCrop();snapGuides=[];target=key;} render(); },
     setBusy(value) {if(value){finishDrag();flushCrop();}busy=value;render();},
     dispose() {finishDrag();flushCrop();workspaceObserver.disconnect();cancelAnimationFrame(cropFrameId);} };

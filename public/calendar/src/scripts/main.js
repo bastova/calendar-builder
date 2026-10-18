@@ -1,3 +1,4 @@
+import { shareDesign, readDesignFolder } from './design-sharing.js';
 import { activateAssignedArtwork } from './artwork-assignment.js';
 import { commitNumericOnBlur } from './numeric-input.js';
 import { createMobileWorkspace } from './mobile-workspace.js';
@@ -329,6 +330,48 @@ for(const action of ['preview-pdf','download-pdf']) byId(action).addEventListene
     try {photoEditor.setBusy(false);render();}
     catch(error) {byId('pdf-progress').textContent=`Could not refresh after export: ${error.message}`;}
     finally {disabledBefore.forEach((disabled,control)=>{if(control.isConnected) control.disabled=disabled;});}
+  }
+});
+byId('share-design').disabled=byId('import-design').disabled=!photoEditor.files;
+for(const action of ['share-design','import-design']) byId(action).addEventListener('click',async()=>{
+  if(busy||assets.pending||!photoEditor.files)return;
+  if(action==='import-design'&&!window.confirm('Replace your current calendar design and photo assignments with this folder’s design?'))return;
+  const controls=new Map([...document.querySelectorAll('main button,main input,main select,main textarea')].filter(control=>!control.closest('dialog')).map(control=>[control,control.disabled]));
+  let staged;
+  busy=true;
+  try {
+    photoEditor.setBusy(true);
+    controls.forEach((_,control)=>{control.disabled=true;});
+    if(action==='share-design') {
+      if(document.querySelector('[aria-invalid="true"]'))throw new Error('Correct invalid settings before sharing.');
+      byId('design-status').textContent='Packaging original images, fonts and design settings…';
+      const blob=await shareDesign(structuredClone(state),assets.metadata(),photoEditor.files);
+      const url=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=url;link.download=`calendar-${state.year}-design.zip`;document.body.append(link);link.click();link.remove();
+      const DOWNLOAD_URL_LIFETIME=60000;
+      setTimeout(()=>URL.revokeObjectURL(url),DOWNLOAD_URL_LIFETIME);
+      byId('design-status').textContent='Design ZIP download requested. Unzip it, then use Import design folder to open it.';
+    } else {
+      const grant=await photoEditor.files.requestDirectory({persistence:'persistent'});
+      if(!grant){byId('design-status').textContent='Import cancelled. Your current design is unchanged.';return;}
+      byId('design-status').textContent='Reading design, loading fonts and checking original images…';
+      const imported=await readDesignFolder(grant,photoEditor.files);
+      const candidate=migrateSavedState(imported.state);
+      if(!valid(candidate))throw new Error('The imported document settings are invalid.');
+      staged=await assets.prepareImport(imported.metadata,photoEditor.files);
+      staged.commit();
+      state={...DEFAULTS,...candidate};
+      document.querySelectorAll('[aria-invalid="true"]').forEach(control=>control.removeAttribute('aria-invalid'));
+      byId('error').textContent='';
+      syncInputs();photoEditor.setTarget(state.previewClosed?'front-cover':`month-${state.month}`);render();save();
+      await photoEditor.useFolder(grant);
+      byId('design-status').textContent=`Design imported. The selected folder is now your image picker folder.${imported.warnings.length?' '+imported.warnings.join(' '):''}`;
+    }
+  } catch(error) {byId('design-status').textContent=`${action==='share-design'?'Share':'Import'} failed: ${error.message}`;}
+  finally {
+    staged?.dispose();busy=false;
+    try {photoEditor.setBusy(false);render();}
+    finally {controls.forEach((disabled,control)=>{if(control.isConnected)control.disabled=disabled;});}
   }
 });
 photoEditor.restore().then(()=>backCoverEditor.restore());

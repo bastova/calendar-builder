@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 
 const source=await readFile(new URL('../public/calendar/src/scripts/main.js',import.meta.url),'utf8');
-const handlers=source.slice(source.indexOf('let previewUrl;'),source.indexOf('photoEditor.restore().then'));
+const handlers=source.slice(source.indexOf('let previewUrl;'),source.indexOf("byId('share-design').disabled"));
 function setup({fail=false,setupError=false,cleanupError=false}={}) {
   const nodes=new Map();
   function node(id,disabled=false,dialog=false) {

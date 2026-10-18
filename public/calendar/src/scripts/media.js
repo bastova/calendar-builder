@@ -346,6 +346,58 @@ export function createAssetStore() {
     },
     setCrop(key, crop) { assertEditable(); const item = records.get(key); if (item) { item.metadata.crop = normalizeCrop(crop); changed(key); } },
     remove(key) { assertEditable(); requests.set(key, (requests.get(key) || 0) + 1); close(key); records.delete(key); changed(key); },
+    /** Stage every imported reference without changing live records or browser storage. */
+    async prepareImport(importedMetadata, files) {
+      assertEditable();
+      if (disposed) throw new Error('Photo asset store is disposed.');
+      if (!importedMetadata || typeof importedMetadata !== 'object' || Array.isArray(importedMetadata)) throw new Error('Invalid photo metadata.');
+      const entries = Object.entries(importedMetadata);
+      if (entries.some(([key]) => !ASSET_KEYS.includes(key) && !isBackImageKey(key))) throw new Error('Unknown artwork slot.');
+      if (entries.filter(([key]) => isBackImageKey(key)).length > BACK_OBJECT_LIMIT) throw new Error('Custom image limit reached.');
+      // Snapshot validated references before the first await; callers cannot change the transaction.
+      const candidates = entries.map(([key,item]) => {
+        if (!item || typeof item.grantId !== 'string' || !item.grantId || !safeRelativePath(item.relativePath)) throw new Error('Invalid photo reference.');
+        return [key,{grantId:item.grantId,grantName:String(item.grantName || 'Photo folder'),relativePath:item.relativePath,crop:normalizeCrop(item.crop)}];
+      });
+      const staged = new Map();
+      let committed = false, released = false;
+      const dispose = () => {
+        if (committed || released) return;
+        released = true;
+        staged.forEach(record => record.bitmap?.close());
+        staged.clear();
+      };
+      try {
+        for (const [key,item] of candidates) {
+          requireResizer();
+          const {blob,info,entry} = await readImage(files,item.grantId,item.relativePath);
+          let decoded, bitmap;
+          try {
+            decoded = await decodeImage(blob,info,PREVIEW_EDGE*RESIZE_OVERSAMPLE,PREVIEW_EDGE*PREVIEW_EDGE*RESIZE_OVERSAMPLE*RESIZE_OVERSAMPLE);
+            bitmap = await previewBitmap(decoded);
+            staged.set(key,{metadata:{...item,sourceWidth:info.width,sourceHeight:info.height,sourceModifiedAt:entry.modifiedAt,sourceBytes:entry.size},bitmap,revision:0,error:''});
+            bitmap = null;
+          } finally {decoded?.close();bitmap?.close();}
+        }
+        return {
+          /** Synchronously replace all artwork, persisting references and crops only. */
+          commit() {
+            assertEditable();
+            if (disposed || released) throw new Error('Photo import is disposed.');
+            if (committed) throw new Error('Photo import is already committed.');
+            if (pending) throw new Error('Wait for photo restoration / assignment / resizing to finish.');
+            for (const key of new Set([...requests.keys(),...records.keys(),...staged.keys()])) requests.set(key,(requests.get(key)||0)+1);
+            records.forEach(record => record.bitmap?.close());
+            records.clear();
+            for (const [key,record] of staged) {record.revision=revision+1;records.set(key,record);}
+            staged.clear();
+            committed = true;
+            changed(null);
+          },
+          dispose
+        };
+      } catch (error) {dispose();throw error;}
+    },
     async restore(files, onProgress = ()=>{}) {
       assertEditable();
       const candidates = [...records].map(([key,record]) => ({key,record,generation:requests.get(key)||0}));

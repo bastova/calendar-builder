@@ -90,6 +90,10 @@ export const FONT_CATALOG = {
 export const FONT_LABELS={times:'Times · Times New Roman',helvetica:'Helvetica · Arial',courier:'Courier · Courier New',...Object.fromEntries(Object.entries(FONT_CATALOG).map(([key,font])=>[key,font.label]))};
 export const CSS_FONT_FAMILIES = {times:'"Times New Roman", Times, serif',helvetica:'Arial, Helvetica, sans-serif',courier:'"Courier New", Courier, monospace',...Object.fromEntries(Object.entries(FONT_CATALOG).map(([key,font])=>[key,`"${font.label}"`]))};
 const embedded = [];
+const sourceFonts = new Map();
+
+/** Return original font bytes for portable design sharing. Core system fonts have no distributable file. */
+export function calendarFontSources() { return [...sourceFonts.values()]; }
 const hookedConstructors = new WeakSet();
 const BINARY_CHUNK_SIZE = 8192;
 function encodedFont(data) {
@@ -117,11 +121,26 @@ export async function registerCustomFont({family,label,data}) {
   document.fonts.add(face);
   const file=`${family}.ttf`;
   embedded.push({family,style:'normal',file,data:encoded});
+  sourceFonts.set(`${family}/normal`,{family,style:'normal',file,data:data.slice(0),custom:true});
   FONT_CATALOG[family]={label,files:{normal:file},custom:true};
   FONT_LABELS[family]=label;
   CSS_FONT_FAMILIES[family]=family;
   installPdfFonts();
 }
+
+/** Load a shared bundled face from the imported folder for both preview and PDF. */
+export async function importBundledFont(family, style, data) {
+  const font=FONT_CATALOG[family];
+  if(!font || font.custom || !Object.hasOwn(font.files,style))throw new Error('Unknown bundled font face.');
+  const face=new FontFace(font.label,data,{weight:style.includes('bold')?'700':'400',style:style.includes('italic')?'italic':'normal'});
+  await face.load();
+  document.fonts.add(face);
+  const existing=embedded.find(item=>item.family===family&&item.style===style);
+  if(!existing)throw new Error('Bundled font registry is unavailable.');
+  existing.data=encodedFont(data);
+  sourceFonts.set(`${family}/${style}`,{family,style,file:font.files[style],data,custom:false});
+}
+
 let loading;
 /** Load bundled artwork fonts and install the live PDF font registry. */
 export function loadCalendarFonts(){
@@ -133,6 +152,7 @@ export function loadCalendarFonts(){
       const face=new FontFace(font.label,data,{weight:style.includes('bold')?'700':'400',style:style.includes('italic')?'italic':'normal'});
       await face.load();document.fonts.add(face);
       embedded.push({family,style,file,data:encodedFont(data)});
+      sourceFonts.set(`${family}/${style}`,{family,style,file,data,custom:false});
     })));
     installPdfFonts();
   })();

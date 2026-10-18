@@ -19,6 +19,7 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 - Reset Layout uses the same secondary icon-and-text button treatment as Choose photo folder, including full-width sizing on phones.
 - Secondary buttons use neutral surfaces, visible borders, and readable text. Keep them rounded, with no shadows. Do not give every action an orange fill.
 - Keep Monthly spread and Print map prominent: bold labels, small supporting icons, and at least 44px touch targets. Use a clear orange selected state. The tab group has no enclosing background or border; its buttons have pill ends and no borders.
+- Place Share & Import beside Print map in the top navigation as a neutral dropdown containing the ZIP sharing and folder import actions.
 - Photo framing actions pair a small outline icon with a visible text label. The aspect-ratio control switches both its lock icon and label with its state; icons are decorative and inherit the button text color.
 - Provide visible hover, keyboard focus, selected, and disabled states. Use a 3px orange focus ring with spacing from the control; respect reduced motion.
 
