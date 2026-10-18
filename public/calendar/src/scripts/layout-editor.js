@@ -113,7 +113,16 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
     createControl(fields,'Display',[`${side}Mode`],'select',[['hidden','Hide cells'],['blank','Blank cells'],['dates','Adjacent-month dates']]);
     createControl(fields,'Background',[`${side}Background`],'color');
     createControl(fields,'Date color',[`${side}Color`],'color');
+    createWeekendControls(fields,`${side}Weekend`);
   }
+  function createWeekendControls(parent,prefix) {
+    createControl(parent,'Custom weekend appearance',[`${prefix}Style`],'checkbox');
+    createControl(parent,'Weekend background',[`${prefix}Background`],'color');
+    createControl(parent,'Weekend date color',[`${prefix}Color`],'color');
+  }
+  const weekendGroup=document.createElement('fieldset'),weekendLegend=document.createElement('legend'),weekendFields=document.createElement('div');
+  weekendGroup.className='layout-adjacent-group';weekendLegend.textContent='Weekend cells · Saturday & Sunday';weekendFields.className='layout-field-grid';weekendGroup.append(weekendLegend,weekendFields);byId('layout-cell-controls').append(weekendGroup);
+  createWeekendControls(weekendFields,'weekend');
   const shapeGroup=document.createElement('fieldset'),shapeLegend=document.createElement('legend'),shapeFields=document.createElement('div');
   shapeGroup.className='layout-adjacent-group';shapeLegend.textContent='Date-number shapes';shapeFields.className='layout-field-grid';shapeGroup.append(shapeLegend,shapeFields);byId('layout-cell-controls').append(shapeGroup);
   createControl(shapeFields,'Shape',['dateShape'],'select',[['none','None'],['circle','Circle'],['diamond','Diamond'],['star','Star'],['oval','Oval'],['square','Square'],['squircle','Squircle']]);
@@ -244,6 +253,13 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
       if(path[0].startsWith('miniCalendar')&&path[0]!=='miniCalendars') control.disabled=!settings.miniCalendars;
       const side=['leading','trailing'].find(side=>path[0].startsWith(side));
       if(side && path[0]!==`${side}Mode`) control.disabled=(path[0]===`${side}Background`&&settings[`${side}BackgroundTransparent`])||settings[`${side}Mode`]==='hidden'||(path[0]===`${side}Color`&&settings[`${side}Mode`]!=='dates');
+      const weekendPrefix=['leadingWeekend','trailingWeekend','weekend'].find(prefix=>path[0].startsWith(prefix));
+      if(weekendPrefix) {
+        const adjacent=weekendPrefix==='weekend'?null:weekendPrefix.startsWith('leading')?'leading':'trailing';
+        const hidden=adjacent&&settings[`${adjacent}Mode`]==='hidden';
+        const enabled=settings[`${weekendPrefix}Style`];
+        control.disabled=Boolean(hidden||(path[0]!==`${weekendPrefix}Style`&&!enabled)||(path[0].includes('Background')&&!settings.cellFill)||(path[0]===`${weekendPrefix}Background`&&settings[`${weekendPrefix}BackgroundTransparent`])||(path[0]===`${weekendPrefix}Color`&&adjacent&&settings[`${adjacent}Mode`]!=='dates'));
+      }
       if(path[0]==='fonts'&&path[2]==='style'){
         const family=FONT_CATALOG[settings.fonts[path[1]].family];
         for(const option of control.options)option.disabled=Boolean(family&&!Object.hasOwn(family.files,option.value));

@@ -1,6 +1,7 @@
 export const siteName = 'Calendar Builder';
 export const title = 'Photo Calendar Maker & PDF Export | Calendar Builder';
-export const description = 'Create custom photo calendars with editable fonts, colors and layouts. Inspect a 3D preview, plan printing, and preview your calendar PDF before downloading.';
+export const tagline = 'The most comprehensive online calendar builder';
+export const description = `${tagline}. Create custom photo calendars with editable layouts, a 3D preview, and printable PDF exports.`;
 
 /** Configure a stable public origin instead of publishing localhost or temporary tunnels. */
 export function publicSiteUrl(value = process.env.SITE_URL) {

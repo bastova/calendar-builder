@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { publicSiteUrl, siteMetadata, structuredData } from '../app/seo.mjs';
+import { publicSiteUrl, siteMetadata, structuredData, tagline } from '../app/seo.mjs';
+
+test('tagline appears in search, social and structured SEO descriptions',()=>{
+  assert.equal(tagline,'The most comprehensive online calendar builder');
+  const metadata=siteMetadata(null);
+  for(const description of [metadata.description,metadata.openGraph.description,metadata.twitter.description,structuredData(null)[0].description])assert.ok(description.startsWith(tagline));
+});
 
 test('public URL configuration prevents invalid canonical origins',()=>{
   assert.equal(publicSiteUrl(''),null);
