@@ -1,3 +1,4 @@
+import { bindFontPicker, refreshFontPicker } from './font-picker.js';
 import { drawFillerPage } from './filler-pages.js';
 import { commitNumericOnBlur } from './numeric-input.js';
 import { paintLayoutBackground } from './layout-background.js';
@@ -50,6 +51,7 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
     }
     label.dataset.field=path.at(-1);control.title=labelText;
     label.append(control);parent.append(label);controls.push({control,path});
+    if(path[0]==='fonts'&&path[2]==='family') bindFontPicker(control);
     if(options && ['style','align','dateVertical'].includes(path.at(-1))) {
       label.classList.add('segmented-field');control.hidden=true;
       const buttons=document.createElement('div');buttons.className='layout-segments';buttons.setAttribute('role','group');buttons.setAttribute('aria-label',labelText);
@@ -229,6 +231,7 @@ export function createLayoutEditor(getState,onLayoutChange,onTabChange,onHoliday
     tabs.forEach((tab,index)=>{tab.setAttribute('aria-selected',String(index===selected));tab.tabIndex=index===selected?0:-1;});
     byId('image-picker-panel').hidden=selected!==0;byId('layout-modifier-panel').hidden=selected!==1;byId('back-cover-panel').hidden=selected!==2;
     for(const {control,path} of controls) {
+      if(path[0]==='fonts'&&path[2]==='family') refreshFontPicker(control);
       if(control===document.activeElement && control.type==='number') continue;
       let value=path[0]==='fonts'?settings.fonts[path[1]][path[2]]:settings[path[0]];
       if(value===null&&control.type==='color')value=normalizeEndSpreadColor(state.endSpreadColor);

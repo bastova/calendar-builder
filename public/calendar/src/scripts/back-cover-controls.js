@@ -1,3 +1,4 @@
+import { bindFontPicker, refreshFontPicker } from './font-picker.js';
 import { FONT_LABELS, FONT_CATALOG } from './fonts.js';
 import { normalizeLayout } from './layout.js';
 import { numericDraft, commitNumericOnBlur } from './numeric-input.js';
@@ -83,7 +84,8 @@ export function createBackCoverControls({getState,onChange,normalize,planFor,can
     else if(parent.closest('#back-shared-styles')){field(parent,'Image horizontal alignment','select',()=>get().align,value=>set('align',value),[['inherit','Use frame alignment'],'left','center','right']);field(parent,'Image vertical alignment','select',()=>get().vertical,value=>set('vertical',value),[['inherit','Use frame alignment'],'top','middle','bottom']);}
   }
   function fontControls(parent,get,patch,alignment=true) {
-    field(parent,'Font','select',()=>get().family,value=>patch({family:value}),Object.entries(FONT_LABELS));
+    const familyPicker=field(parent,'Font','select',()=>get().family,value=>patch({family:value}),Object.entries(FONT_LABELS));
+    bindFontPicker(familyPicker);
     field(parent,'Size · pt','number',()=>get().size,value=>patch({size:value}),null,[4,144]);
     field(parent,'Text color','color',()=>get().color,value=>patch({color:value}));
     if(alignment)field(parent,'Font alignment','select',()=>get().align,value=>patch({align:value}),['left','center','right']);
@@ -131,7 +133,7 @@ export function createBackCoverControls({getState,onChange,normalize,planFor,can
   }
   function fontAt(object,offset) {let count=0;for(const run of object.runs??[]){count+=run.text.length;if(count>offset)return run.font;}return object.runs?.at(-1)?.font??object.font;}
   function reorder(delta) {update(next=>{const index=next.objects.findIndex(item=>item.id===selection),target=Math.max(0,Math.min(next.objects.length-1,index+delta));if(index>=0){const [object]=next.objects.splice(index,1);next.objects.splice(target,0,object);}});}
-  function renderFontFields() {for(const entry of fields)if(entry.owner.isConnected&&document.activeElement!==entry.control){const value=entry.get();if(entry.type==='style'){entry.control.setAttribute('aria-pressed',String(value));entry.control.disabled=locked()||entry.available?.()===false;}else if(entry.type==='checkbox')entry.control.checked=value;else entry.control.value=String(value??'');}}
+  function renderFontFields() {for(const entry of fields)if(entry.owner.isConnected&&document.activeElement!==entry.control){if(Object.hasOwn(entry.control.dataset,'fontPicker'))refreshFontPicker(entry.control);const value=entry.get();if(entry.type==='style'){entry.control.setAttribute('aria-pressed',String(value));entry.control.disabled=locked()||entry.available?.()===false;}else if(entry.type==='checkbox')entry.control.checked=value;else entry.control.value=String(value??'');}}
   function saveRect(rect) {if(selection==='grid')update(next=>{next.grid=rect;});else updateObject(object=>{object.rect=rect;});}
   function point(event) {const bounds=canvas.getBoundingClientRect(),state=getState();return {x:(event.clientX-bounds.left)/bounds.width*state.width,y:(event.clientY-bounds.top)/bounds.height*state.height};}
   function contains(box,point) {return point.x>=box.x&&point.y>=box.y&&point.x<=box.x+box.width&&point.y<=box.y+box.height;}

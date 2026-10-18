@@ -5,6 +5,7 @@ let mobileWorkspace;
 import { readPreference, writePreference } from './browser-storage.js';
 import { pdfSheetGeometry } from './pdf-geometry.js';
 import { loadCalendarFonts } from './fonts.js';
+import { restoreCustomFonts } from './custom-fonts.js';
 import { createCalendarScene, PREVIEW_DEFAULTS, PAPER_WEIGHTS, PAPER_FINISHES, estimatedCaliperMm } from './scene.js';
 import { MONTHS, assetLabel, calendarPagePlan, calendarSelections, validateSaddleImposition, normalizeLayout, normalizeArtworkMetadata, ARTWORK_FONT_ROLES, ARTWORK_METADATA_LIMITS, DEFAULT_END_SPREAD_COLOR, END_SPREADS, CALENDAR_SELECTIONS, normalizeEndSpreadColor, calendarSelection, calendarSelectionIndex, calendarSelectionLabel } from './layout.js';
 import { createLayoutEditor } from './layout-editor.js';
@@ -16,6 +17,7 @@ import { normalizePdfExportTarget, prestoPhotoExportState, prestoPhotoSummary } 
 import { normalizePrintColor, createPrintColorPanel, printColorSummary } from './print-color.js';
 import { normalizeHolidays, createHolidayPanel } from './holidays.js';
 await loadCalendarFonts();
+const customFontRestoreErrors = await restoreCustomFonts();
 const calendarScene = createCalendarScene(document.getElementById('three-scene'));
 const STORAGE_KEY = 'calendar-layout-2027-39be18a4-712d-45cd-a061-f492bec78230:studio-v1';
 const LEGACY_STORAGE_KEY = 'calendar-layout-studio-v1';
@@ -341,3 +343,5 @@ for (const [index, details] of [...document.querySelectorAll('details')].entries
 }
 
 mobileWorkspace=createMobileWorkspace(()=>state,view=>{state.view=view;render();save();});
+
+if(customFontRestoreErrors.length) byId('error').textContent=customFontRestoreErrors.join(' ');

@@ -1,5 +1,5 @@
 import { roundedOutline, roundedSides, canvasOutline, canvasDecoration } from './grid-decoration.js';
-import { FONT_CATALOG } from './fonts.js';
+import { FONT_CATALOG, CSS_FONT_FAMILIES } from './fonts.js';
 import { holidaysForDate, holidayTextColor, wrapHolidayText } from './holidays.js';
 const POINTS_PER_INCH = 72;
 const TEXT_HEIGHT = 1.3;
@@ -8,7 +8,7 @@ const GLYPH_GUARD = 0.2;
 const HOLIDAY_LINE_HEIGHT = 1.35;
 const ALIGNMENTS = ['left','center','right'];
 const FONT_STYLES = ['normal','bold','italic','bolditalic'];
-export const LAYOUT_FONTS = Object.freeze({times:'"Times New Roman", Times, serif',helvetica:'Arial, Helvetica, sans-serif',courier:'"Courier New", Courier, monospace',...Object.fromEntries(Object.entries(FONT_CATALOG).map(([key,font])=>[key,`"${font.label}"`]))});
+export const LAYOUT_FONTS = CSS_FONT_FAMILIES;
 export const LAYOUT_ROLES = Object.freeze(['title','year','weekday','date','holiday']);
 // Artwork typography is shared by monthly captions and generated back-cover credits.
 export const ARTWORK_FONT_ROLES = Object.freeze(['artist','artworkTitle','description']);

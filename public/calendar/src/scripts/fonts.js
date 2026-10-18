@@ -88,23 +88,52 @@ export const FONT_CATALOG = {
   }
 };
 export const FONT_LABELS={times:'Times · Times New Roman',helvetica:'Helvetica · Arial',courier:'Courier · Courier New',...Object.fromEntries(Object.entries(FONT_CATALOG).map(([key,font])=>[key,font.label]))};
+export const CSS_FONT_FAMILIES = {times:'"Times New Roman", Times, serif',helvetica:'Arial, Helvetica, sans-serif',courier:'"Courier New", Courier, monospace',...Object.fromEntries(Object.entries(FONT_CATALOG).map(([key,font])=>[key,`"${font.label}"`]))};
+const embedded = [];
+const hookedConstructors = new WeakSet();
+const BINARY_CHUNK_SIZE = 8192;
+function encodedFont(data) {
+  let binary='';const bytes=new Uint8Array(data);
+  for(let i=0;i<bytes.length;i+=BINARY_CHUNK_SIZE)binary+=String.fromCharCode(...bytes.subarray(i,i+BINARY_CHUNK_SIZE));
+  return btoa(binary);
+}
+function installPdfFonts() {
+  const Constructor=window.jspdf?.jsPDF;
+  if(Constructor && !hookedConstructors.has(Constructor)) {
+    Constructor.API.events.push(['addFonts',function(){
+      for(const font of embedded){this.addFileToVFS(font.file,font.data);this.addFont(font.file,font.family,font.style);}
+    }]);
+    hookedConstructors.add(Constructor);
+  }
+}
+/** Load and verify an uploaded face before exposing its normal-only browser/PDF family. */
+export async function registerCustomFont({family,label,data}) {
+  if(!/^custom_[a-f0-9]{64}$/.test(family))throw new Error('Invalid custom font identifier.');
+  if(FONT_CATALOG[family])return;
+  const face=new FontFace(family,data,{weight:'400',style:'normal'});
+  try {await face.load();if(face.status!=='loaded')throw new Error('Font did not load.');}
+  catch {throw new Error('The browser could not load this TrueType font. Try another static .ttf file.');}
+  const encoded=encodedFont(data);
+  document.fonts.add(face);
+  const file=`${family}.ttf`;
+  embedded.push({family,style:'normal',file,data:encoded});
+  FONT_CATALOG[family]={label,files:{normal:file},custom:true};
+  FONT_LABELS[family]=label;
+  CSS_FONT_FAMILIES[family]=family;
+  installPdfFonts();
+}
 let loading;
+/** Load bundled artwork fonts and install the live PDF font registry. */
 export function loadCalendarFonts(){
   return loading ??= (async()=>{
-    const embedded=[];
-    await Promise.all(Object.entries(FONT_CATALOG).flatMap(([family,font])=>Object.entries(font.files).map(async([style,file])=>{
+    await Promise.all(Object.entries(FONT_CATALOG).filter(([,font])=>!font.custom).flatMap(([family,font])=>Object.entries(font.files).map(async([style,file])=>{
       const response=await fetch(new URL(`../../fonts/${family}/${file}`, import.meta.url));
       if(!response.ok)throw new Error(`Unable to load ${font.label}. Reload to retry.`);
       const data=await response.arrayBuffer();
       const face=new FontFace(font.label,data,{weight:style.includes('bold')?'700':'400',style:style.includes('italic')?'italic':'normal'});
       await face.load();document.fonts.add(face);
-      let binary='';const bytes=new Uint8Array(data);
-      for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
-      embedded.push({family,style,file,data:btoa(binary)});
+      embedded.push({family,style,file,data:encodedFont(data)});
     })));
-    const Constructor=window.jspdf?.jsPDF;
-    if(Constructor) Constructor.API.events.push(['addFonts',function(){
-      for(const font of embedded){this.addFileToVFS(font.file,font.data);this.addFont(font.file,font.family,font.style);}
-    }]);
+    installPdfFonts();
   })();
 }
