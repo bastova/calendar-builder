@@ -2,26 +2,25 @@
 
 ## Direction
 
-Calendar Builder is a quiet, precise workspace for designing photo calendars. Keep the interface neutral and editorial so photographs and calendar previews remain the focus. Use clear hierarchy, compact controls and section spacing, and restrained decoration. Reserve generous space for the 3D artwork preview.
+Calendar Builder follows Ember’s current instrument-panel design language: compact monochrome chrome, Cascadia Code typography, square keys and panels, thin dividers, and uppercase section legends. Reserve color for photos, calendar artwork, color controls and print proofs. Preserve the large preview and Calendar’s existing task layout. Reference: Ember DESIGN.md, including its Instrument panel revision and softened light/dark palettes.
 
 ## Color and themes
 
 - Support light and dark themes using the existing CSS custom properties. Remember the user's theme choice.
-- Use white and pale gray surfaces in light mode, charcoal surfaces in dark mode, and readable neutral text and borders.
-- Orange is the interface accent. Do not use blue, indigo, or purple for primary actions or selected navigation.
-- Use `--accent: #f97316`, `--accent-hover: #fb923c`, and `--accent-text: #241005` in both themes. Dark text on orange keeps button labels readable.
-- Reserve semantic green and amber for status and warnings. Theme changes must preserve photo, calendar artwork, color proof, and exported PDF colors.
+- Use Ember’s softened monochrome palettes: light surfaces #ebebeb, inset controls #e7e7e7, text #2d2d2d, borders #cecece; dark surfaces #1f1f1f, preview #181818, controls #252525, text #e3e3e3, borders #3e3e3e.
+- Primary actions and selected navigation use #2a2a2a with #ebebeb text in light mode and #e6e6e6 with #181818 text in dark mode. Use the shared accent, control and focus tokens in main.css.
+- All status and warning chrome is neutral; communicate meaning with labels, icons and border contrast. Theme changes must preserve photo, calendar artwork, color proof, and exported PDF colors.
 
 ## Buttons and navigation
 
-- Accented buttons are rounded and flat, with a solid orange fill and dark text. Use fully rounded pill ends (`border-radius: 999px`), no border, no gradients, and no shadows.
+- Primary buttons are square and flat, with the theme’s contrasting monochrome fill. Use 1px neutral borders, no decorative gradients and no shadows.
 - Apply this treatment to primary actions and selected navigation: the active Monthly spread / Print map button, active artwork editor tab, selected month, and PDF export action.
 - Reset Layout uses the same secondary icon-and-text button treatment as Choose photo folder, including full-width sizing on phones.
-- Secondary buttons use neutral surfaces, visible borders, and readable text. Keep them rounded, with no shadows. Do not give every action an orange fill.
-- Keep Monthly spread and Print map prominent: bold labels, small supporting icons, and at least 44px touch targets. Use a clear orange selected state. The tab group has no enclosing background or border; its buttons have pill ends and no borders.
+- Secondary buttons use neutral surfaces, visible borders, and readable text. Keep them square, with no shadows. Reserve contrasting fills for primary actions and selected states.
+- Keep Monthly spread and Print map prominent: medium-weight labels, small supporting icons, 34px desktop keys and at least 44px mobile touch targets. Use a contrasting monochrome selected state. The tab group has no enclosing background; individual square keys have thin neutral borders.
 - Place Share & Import beside Print map in the top navigation as a neutral dropdown containing the ZIP sharing and folder import actions.
 - Photo framing actions pair a small outline icon with a visible text label. The aspect-ratio control switches both its lock icon and label with its state; icons are decorative and inherit the button text color.
-- Provide visible hover, keyboard focus, selected, and disabled states. Use a 3px orange focus ring with spacing from the control; respect reduced motion.
+- Provide visible hover, keyboard focus, selected, and disabled states. Use a 2px neutral focus ring with 2px spacing from the control; respect reduced motion.
 
 - Prefer icons for familiar utility actions (reset, zoom, previous/next, parent folder, remove). Icon-only buttons must retain an accessible name and a tooltip. Keep short text beside icons for navigation, folder selection, and PDF export.
 - Omit decorative headlines and eyebrow copy from editor menus. Back-cover Image framing stays permanently open with no divider below it.
@@ -30,9 +29,9 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 ## Typography and layout
 
 - Calendar artwork font sizes stay at their configured point sizes when page dimensions change, including holiday labels. Never automatically shrink typography to fit; report overflow so users can adjust their layout.
-- Calendar artwork offers a curated Google Fonts selection, self-hosted with licenses and embedded in PDF exports. Keep the interface font unchanged. Offer only styles supplied by each family.
-- Use the existing Arial / Helvetica sans-serif stack, modest headings, compact labels, and strong action labels.
-- Keep menus and sections compact: roughly 8px control gaps, 10–14px panel padding, 32px inputs, and 34–36px desktop utility buttons. Keep primary view tabs and touch controls at least 44px tall.
+- Calendar artwork offers a curated Google Fonts selection, self-hosted with licenses and embedded in PDF exports. Keep the interface font separate from artwork fonts. Offer only styles supplied by each family.
+- Use Cascadia Code with a monospace fallback for interface text, loaded through Google Fonts as in Ember. Base text is 12px / 1.45; controls and labels are 10–12px with tabular numerals. Use 10px uppercase section legends with .09em tracking. Artwork font controls and canvases retain their configured font families.
+- Keep menus and sections compact: roughly 8px control gaps, 10–14px panel padding, 28px inputs and desktop utility buttons (the compact equivalent of Ember’s 75% controls). Keep primary view tabs 34px on desktop and touch controls at least 44px tall. Do not scale the whole workspace or artwork canvases.
 - Use a horizontal calendar toolbar instead of a permanent configuration sidebar. Keep year, dimensions and week start immediately available, with Binding beside Week begins, followed by Opening blank spread and Closing blank spread checkboxes and the bottom-aligned Holidays menu on desktop. Align the stacked checkboxes to the full height of the adjacent labeled controls. Anchor the Holidays menu below its own button. Do not show a measurement guides checkbox on desktop or mobile.
 - On wide screens, place the large 3D stage beside a 390–430px scrollable artwork inspector. Group secondary settings in named accordions. Keep photo framing and active editing controls directly available.
 - Keep Glossy / Satin / Matte paper finish and a roughness slider visible in the 3D preview toolbar. Binding belongs in Calendar settings beside Week begins, including mobile Setup. Put Paper weight & thickness beside Paper finish in the preview controls on desktop and mobile.
@@ -42,7 +41,7 @@ Calendar Builder is a quiet, precise workspace for designing photo calendars. Ke
 - Use at least 44px mobile touch controls, 16px form text, readable 12–14px labels, safe-area padding and a horizontally scrollable month strip. Keep finish and roughness visible in the preview toolbar; allow two organized rows on phones. Avoid page-wide horizontal scrolling at 320px.
 
 - Font-style controls are small borderless text buttons. Render R normally, B in bold, I in italic, and BI in bold italic; retain accessible style names, tooltips, and a clear selected state.
-- Layout modifier sections share the same accordion headings, row spacing, left-aligned labels and right-aligned controls. Typography uses consistent role cards with Font, Size / Color, Style and Align rows. Keep square color swatches and numeric fields the same size throughout; desktop controls are 34px and mobile controls are at least 44px. Flat calendar previews offer fit and zoom controls with scrollable inspection. Layout modifier and Back cover share the same zoom toolbar: minus, percentage, plus, and a visible Fit button, with identical spacing and mobile touch sizes.
+- Layout modifier sections share the same accordion headings, row spacing, left-aligned labels and right-aligned controls. Typography uses consistent role cards with Font, Size / Color, Style and Align rows. Keep square color swatches and numeric fields the same size throughout; desktop controls are 28px and mobile controls are at least 44px. Flat calendar previews offer fit and zoom controls with scrollable inspection. Layout modifier and Back cover share the same zoom toolbar: minus, percentage, plus, and a visible Fit button, with identical spacing and mobile touch sizes.
 
 - Layout modifier keeps its flat calendar preview and zoom controls stationary above an independently scrollable settings area on desktop and phones. Reserve enough space for the settings; fit the preview to its available viewport height.
 
@@ -93,7 +92,7 @@ Read this file first. Reuse these tokens and patterns, check both themes and res
 ## Information pages
 
 - Show Privacy Policy, Contact, About, and FAQ links in a quiet desktop footer. On phones, show this footer in a dedicated Info screen selected from the five-item bottom navigation.
-- Information pages use a readable single column, shared theme colors, orange keyboard focus, and a clear link back to the calendar.
+- Information pages use a readable single column, shared theme colors, neutral keyboard focus, and a clear link back to the calendar.
 
 - Group footer links under Explore, Support, and Privacy & usage. Include the linked brand, a short description, copyright, Terms of Use, Contact, and Back to top. Keep the expanded footer in mobile Info.
 
